@@ -1,0 +1,41 @@
+# Local environment configuration and key material
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.ppk
+*.jks
+*.keystore
+id_dsa
+id_ecdsa
+id_ed25519
+id_rsa
+
+# Backend build output and runtime data
+/backend/target/
+/backend/data/
+/backend/uploads/
+*.dump
+*.sql.gz
+
+# Frontend dependencies and generated output
+/frontend/node_modules/
+/frontend/dist/
+/frontend/coverage/
+/frontend/.wrangler/
+*.tsbuildinfo
+
+# Local verification artifacts and logs
+/.qa/
+*.log
+
+# Editor and OS files
+/.idea/
+/.vscode/
+*.iml
+.DS_Store
+Desktop.ini
+Thumbs.db

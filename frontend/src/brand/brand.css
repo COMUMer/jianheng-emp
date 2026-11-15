@@ -1,0 +1,41 @@
+.brand-lockup {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 11px;
+    color: #087d80;
+}
+
+.brand-lockup-mark { width: 34px; height: 36px; flex: none; }
+
+.brand-lockup-type { display: flex; flex-direction: column; gap: 3px; }
+.brand-lockup-type strong {
+    font-size: 23px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: .05em;
+    color: #121614;
+    white-space: nowrap;
+}
+.brand-lockup-type strong > span {
+    margin-left: 6px;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: .08em;
+    color: #333a36;
+}
+.brand-lockup-type small {
+    font-size: 9px;
+    font-weight: 500;
+    line-height: 1.5;
+    letter-spacing: .29em;
+    color: #6a7d75;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.brand-lockup.is-compact { gap: 9px; }
+.brand-lockup.is-compact .brand-lockup-mark { width: 28px; height: 30px; }
+.brand-lockup.is-compact .brand-lockup-type strong { font-size: 19px; }
+.brand-lockup.is-compact .brand-lockup-type strong > span { margin-left: 4px; font-size: 11px; }
+.brand-lockup.is-compact .brand-lockup-type small { font-size: 7.5px; letter-spacing: .24em; }

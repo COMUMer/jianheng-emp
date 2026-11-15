@@ -1,0 +1,16 @@
+# 激活 dev profile 时加载，补充本机开发设置。
+spring:
+  flyway:
+    # 通用建表与本地样例账号按版本顺序迁移。
+    locations:
+      - classpath:db/migration
+      - classpath:db/dev
+
+server:
+  # 本地监听地址从 .env.dev 读取。127.0.0.1 表示只接受本机访问。
+  address: ${SERVER_ADDRESS}
+
+springdoc:
+  api-docs:
+    # 设为 true 时可访问 /api/openapi，用于生成前端接口类型。
+    enabled: ${OPENAPI_ENABLED}

@@ -1,0 +1,7 @@
+# 激活 prod profile 时加载，补充生产设置。
+server:
+  servlet:
+    session:
+      cookie:
+        # 浏览器只通过 HTTPS 发送会话 Cookie。
+        secure: true

@@ -1,0 +1,13 @@
+.avatar-crop-stage {
+    position: relative;
+    height: 360px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: #101915;
+}
+
+.avatar-crop-stage .reactEasyCrop_CropArea {
+    color: rgba(8, 20, 15, 0.55);
+    border: 2px solid rgba(255, 255, 255, 0.95);
+}
+.avatar-crop-hint { margin: 12px 0 0; color: var(--quiet); font-size: 12px; }

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jianheng.emp.approval.WorkflowMapper">
+    <sql id="summary">
+        SELECT d.id, d.kind, d.status, r.title, COALESCE(e.name, a.username) AS applicant, e.avatar_key AS applicant_avatar_key,
+               r.department_name, r.amount, d.created_at, d.updated_at, COALESCE(ue.name, ua.username) AS operator,
+               r.submitted_at,
+               t.id AS task_id, COALESCE(te.name, ta.username) AS assignee, te.avatar_key AS assignee_avatar_key,
+               t.due_at, p.paid_on, p.reference
+        FROM work_document d JOIN document_revision r ON r.id = d.current_revision_id
+        JOIN account a ON a.id = d.owner_id LEFT JOIN employee e ON e.id = a.employee_id
+        LEFT JOIN account ua ON ua.id = d.updated_by LEFT JOIN employee ue ON ue.id = ua.employee_id
+        LEFT JOIN approval_task t ON t.revision_id = r.id AND t.status = 'ACTIVE'
+        LEFT JOIN account ta ON ta.id = t.assignee_id LEFT JOIN employee te ON te.id = ta.employee_id
+        LEFT JOIN expense_payment p ON p.document_id = d.id
+    </sql>
+    <select id="summary" resultType="com.jianheng.emp.approval.WorkflowData$Summary">
+        <include refid="summary"/> WHERE d.id = #{id}
+    </select>
+    <select id="mine" resultType="com.jianheng.emp.approval.WorkflowData$Summary">
+        <include refid="summary"/> WHERE d.owner_id = #{owner} ORDER BY d.id DESC
+    </select>
+    <select id="inbox" resultType="com.jianheng.emp.approval.WorkflowData$Summary">
+        <include refid="summary"/> WHERE t.id IS NOT NULL
+        <if test="!all">AND t.assignee_id = #{account}</if>
+        ORDER BY t.due_at, t.id
+    </select>
+    <select id="ledger" resultType="com.jianheng.emp.approval.WorkflowData$Summary">
+        <include refid="summary"/> WHERE d.kind = 'EXPENSE' AND r.submitted_at IS NOT NULL
+        <if test="status != null">AND d.status = #{status}</if>
+        <if test="departmentId != null">AND r.department_id = #{departmentId}</if>
+        <if test="from != null">AND r.submitted_at &gt;= #{from}</if>
+        <if test="to != null">AND r.submitted_at &lt; DATE_ADD(#{to}, INTERVAL 1 DAY)</if>
+        ORDER BY r.submitted_at DESC, d.id DESC
+    </select>
+</mapper>

@@ -1,0 +1,1 @@
+UPDATE work_document SET updated_by = owner_id WHERE updated_by IS NULL;

@@ -1,0 +1,57 @@
+# Spring Boot 基础配置，每次启动时加载。激活 profile 后，同名设置可由对应 YAML 覆盖。
+spring:
+  # 应用名称，用于启动日志等标识。
+  application:
+    name: jh-emp
+  # 连接 MySQL 的值由运行环境提供。本地填写仓库根目录的 .env.dev。
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  session:
+    jdbc:
+      # 会话表由 Flyway 迁移统一创建。
+      initialize-schema: never
+  servlet:
+    # 限制附件上传大小，分别限制单个文件和整次请求。
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 16MB
+
+mybatis-plus:
+  configuration:
+    # 把 SQL 列名 employee_id 映射到 Java 属性 employeeId。
+    map-underscore-to-camel-case: true
+    # 按构造参数名映射查询结果，供 Java record 等类型使用。
+    arg-name-based-constructor-auto-mapping: true
+
+springdoc:
+  api-docs:
+    # 默认关闭 OpenAPI 描述。dev profile 可按 OPENAPI_ENABLED 启用。
+    enabled: false
+    # OpenAPI 启用后的访问路径，供前端生成接口类型。
+    path: /api/openapi
+
+management:
+  endpoints:
+    web:
+      base-path: /api
+      # 隐藏 Actuator 的端点索引页。
+      discovery:
+        enabled: false
+      # 对 HTTP 仅开放健康检查，地址为 /api/health。
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # 健康检查只返回状态等概要，隐藏数据库等组件细节。
+      show-details: never
+
+server:
+  servlet:
+    session:
+      cookie:
+        # 浏览器脚本无法直接读取会话 Cookie。
+        http-only: true
+        # 限制跨站请求携带会话 Cookie。
+        same-site: lax
