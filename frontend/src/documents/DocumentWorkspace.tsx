@@ -7,12 +7,12 @@ import { DocumentTag, EmptyState, PageHeading, ResourceState } from '../common';
 import { DateField } from '../dates';
 import { formatDate, formatMoney, kindLabel, kinds, statusLabel } from '../format';
 import type { DocumentStatus, Kind } from '../format';
+import type { Section } from '../navigation';
 import { useResource } from '../useResource';
 import { DocumentDetail } from './DocumentDetail';
 import { DraftEditor } from './DraftEditor';
 
 type Summary = Model<'Summary'>;
-type Section = 'home' | 'requests' | 'inbox' | 'ledger';
 
 export function DocumentWorkspace({ user, section, navigate }: { user: Model<'CurrentUser'>; section: Section; navigate: (section: Section) => void }) {
     const { message } = App.useApp();

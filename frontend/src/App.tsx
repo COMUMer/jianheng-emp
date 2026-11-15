@@ -1,81 +1,100 @@
-import { App as AntApp, Button, Tag } from 'antd';
-import { useEffect, useState } from 'react';
+import { DownOutlined, IdcardOutlined, LogoutOutlined, MenuOutlined } from '@ant-design/icons';
+import { App as AntApp, Button, Drawer, Dropdown } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
 import { api, showError } from './api';
 import type { Model } from './api';
 import { BrandLockup } from './brand/Brand';
 import { DocumentWorkspace } from './documents/DocumentWorkspace';
+import { roleLabel } from './format';
+import { LoginPage, LoginSplash } from './login/LoginPage';
+import { navigationFor, Sidebar } from './navigation';
+import type { Section } from './navigation';
 import { MyProfile } from './people/MyProfile';
 import { PersonAvatar } from './people/avatar';
 import { PeopleWorkspace } from './people/PeopleWorkspace';
 import { AdminWorkspace } from './settings/AdminWorkspace';
-import { roleLabel } from './format';
-import { LoginPage, LoginSplash } from './login/LoginPage';
+import { useMediaQuery } from './useMediaQuery';
 import { EmployeeWatermark } from './watermark/EmployeeWatermark';
-
-type Section = 'home' | 'requests' | 'inbox' | 'profile' | 'people' | 'ledger' | 'settings';
-const sections: { key: Section; label: string; icon: string }[] = [
-    { key: 'home', label: '工作台', icon: '▦' },
-    { key: 'requests', label: '我的申请', icon: '≡' },
-    { key: 'inbox', label: '审批待办', icon: '✓' },
-    { key: 'profile', label: '我的档案', icon: '▤' },
-    { key: 'people', label: '人员管理', icon: '♙' },
-    { key: 'ledger', label: '费用台账', icon: '¥' },
-    { key: 'settings', label: '系统设置', icon: '⚙' },
-];
 
 export default function App() {
     const { message } = AntApp.useApp();
     const [user, setUser] = useState<Model<'CurrentUser'> | null>();
     const [section, setSection] = useState<Section>('home');
+    const [navigationOpen, setNavigationOpen] = useState(false);
+    const [accountOpen, setAccountOpen] = useState(false);
+    const compact = useMediaQuery('(max-width: 780px)');
+    const navigation = useMemo(() => user ? navigationFor(user) : [], [user]);
     useEffect(() => {
         api<Model<'CurrentUser'>>('/session/me').then(setUser).catch(() => setUser(null));
         const expired = () => setUser(null);
         window.addEventListener('session-expired', expired);
         return () => window.removeEventListener('session-expired', expired);
     }, []);
+    useEffect(() => { if (!compact) setNavigationOpen(false); }, [compact]);
 
-    const roles = user?.roles ?? [];
-    const admin = roles.includes('ADMIN');
     if (user === undefined) return <LoginSplash />;
     if (!user) return <LoginPage onAuthenticated={authenticated => {
         setUser(authenticated);
         setSection('home');
+        setNavigationOpen(false);
     }} />;
 
-    const canViewSettings = admin || roles.includes('FINANCE');
-    const canViewLedger = canViewSettings || roles.includes('PAYER');
-    const canManagePeople = admin || roles.includes('HR');
-    const allowed = sections.filter(({ key }) =>
-        key === 'profile' ? !!user.employeeId
-        : key === 'people' ? canManagePeople
-        : key === 'settings' ? canViewSettings
-        : key === 'ledger' ? canViewLedger
-        : true);
+    const roles = user.roles ?? [];
+    const displayName = user.name ?? user.username ?? '用户';
+    const accountRole = roleLabel[roles.find(role => role !== 'EMPLOYEE') ?? 'EMPLOYEE'];
+    const navigate = (target: Section) => {
+        setSection(target);
+        setNavigationOpen(false);
+    };
+    const logout = async () => {
+        try { await api('/session/logout', { method: 'POST' }); setUser(null); setNavigationOpen(false); }
+        catch (error) { message.error(showError(error)); }
+    };
     return <>
-        <div className="shell">
+        <div className={compact ? 'shell shell-compact' : 'shell'}>
             <header className="topbar">
-                <button className="brand" aria-label="见衡科技，返回工作台首页" onClick={() => setSection('home')}><BrandLockup compact /></button>
+                <div className="topbar-start">
+                    {compact && <Button type="text" className="nav-toggle" icon={<MenuOutlined />} aria-label="打开导航"
+                        onClick={() => setNavigationOpen(true)} />}
+                    <button className="brand" aria-label="见衡科技，返回工作台首页" onClick={() => navigate('home')}><BrandLockup compact /></button>
+                </div>
                 <div className="account-bar">
-                    <PersonAvatar name={user.name ?? user.username} avatarKey={user.avatarKey} size={30} className="user-avatar" />
-                    <span className="account-name">{user.username}</span>
-                    <Tag className="account-role">{roleLabel[roles.find(role => role !== 'EMPLOYEE') ?? 'EMPLOYEE']}</Tag>
-                    <Button type="text" onClick={async () => {
-                        try { await api('/session/logout', { method: 'POST' }); setUser(null); }
-                        catch (error) { message.error(showError(error)); }
-                    }}>退出</Button>
+                    <Dropdown open={accountOpen} onOpenChange={setAccountOpen} placement="bottomRight" trigger={['click']} menu={{
+                        items: [
+                            ...(user.employeeId ? [{ key: 'profile', icon: <IdcardOutlined aria-hidden />, label: '我的档案' }] : []),
+                            { key: 'logout', icon: <LogoutOutlined aria-hidden />, label: '退出登录' },
+                        ],
+                        onClick: ({ key }) => {
+                            if (key === 'profile') navigate('profile');
+                            else if (key === 'logout') void logout();
+                        },
+                    }}>
+                        <button type="button" className="account-menu" aria-label={`账号菜单：${displayName}`} aria-haspopup="menu"
+                            aria-expanded={accountOpen}>
+                            <span className="account-avatar" aria-hidden="true">
+                                <PersonAvatar name={displayName} avatarKey={user.avatarKey} size={36} />
+                            </span>
+                            <span className="account-menu-text">
+                                <span className="account-name">{displayName}</span>
+                                <span className="account-role">{accountRole}</span>
+                            </span>
+                            <DownOutlined className="account-chevron" aria-hidden />
+                        </button>
+                    </Dropdown>
                 </div>
             </header>
-            <nav className="sidebar" aria-label="主导航">
-                {allowed.map(item => <button key={item.key} aria-current={section === item.key ? 'page' : undefined} onClick={() => setSection(item.key)}>
-                    <span aria-hidden className="nav-icon">{item.icon}</span>{item.label}</button>)}
-            </nav>
+            {!compact && <Sidebar entries={navigation} active={section} onSelect={navigate} />}
             <main className="workspace">
                 {section === 'profile' ? <MyProfile user={user} onAvatarChanged={avatarKey => setUser(current => current ? { ...current, avatarKey } : current)} />
                     : section === 'people' ? <PeopleWorkspace user={user} />
                     : section === 'settings' ? <AdminWorkspace user={user} />
-                    : <DocumentWorkspace user={user} section={section} navigate={setSection} />}
+                    : <DocumentWorkspace user={user} section={section} navigate={navigate} />}
             </main>
         </div>
+        {compact && <Drawer open={navigationOpen} onClose={() => setNavigationOpen(false)} placement="left" size={260}
+            className="nav-drawer" title={<BrandLockup compact />}>
+            <Sidebar entries={navigation} active={section} onSelect={navigate} />
+        </Drawer>}
         <EmployeeWatermark user={user} />
     </>;
 }
