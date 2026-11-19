@@ -1,0 +1,19 @@
+{
+  // Cloudflare Workers 项目名，也是部署与回滚的单位。
+  "name": "jianheng-emp-website",
+  // Worker 入口：把 /api/* 转发到后端域名。
+  "main": "worker/api-proxy.ts",
+  "compatibility_date": "2026-06-01",
+  "assets": {
+    // 构建产物目录，由 `npm run build` 生成。
+    "directory": "./dist",
+    // 未命中的路径回退到 index.html，交给前端路由处理。
+    "not_found_handling": "single-page-application",
+    // 只有接口请求进入 Worker，其余直接由静态资源响应。
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    // 后端域名，指向隧道公开的主机名。
+    "ORIGIN": "https://api.jianheng.tech"
+  }
+}

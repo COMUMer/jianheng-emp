@@ -68,7 +68,7 @@
 | --- | --- |
 | GitHub Secrets | `SSH_HOST`、`SSH_USER`、`SSH_KEY`、`SSH_KNOWN_HOSTS`、`ENV_FILE`、`ENV_PROD` |
 | 主机 `/opt/jh-emp/.env` | 数据库名与账号、隧道 token |
-| 主机 `/opt/jh-emp/.env.prod` | `prod` profile、管理员初始账号、发信密钥；只读挂载进容器，由 `SPRING_CONFIG_IMPORT` 导入 |
+| 主机 `/opt/jh-emp/.env.prod` | `prod` profile、管理员初始账号、发信密钥、敏感字段密钥 `PII_KEYS`；只读挂载进容器，由 `SPRING_CONFIG_IMPORT` 导入 |
 
 生产的配置真相源是 Secrets 里的 `ENV_FILE` 与 `ENV_PROD`，主机上的文件是它们的副本，每次发布覆盖写入，不做手工修改。写入用 `install` 一次完成内容、属主与权限：`.env` 归 root、`.env.prod` 归容器内的 1001，两者 600。数据库账号与密码只出现在 `.env`，`.env.prod` 不重复保存。写入失败即中止发布，线上不受影响。
 
@@ -119,6 +119,7 @@
 | 登录接口无频率限制 | 在 Cloudflare 为 `/api/session/login` 配置限流规则 |
 | 隧道转发后客户端 IP 失真 | 请求日志按 `CF-Connecting-IP` 取值；`X-Forwarded-For` 最左值可被伪造，验收时用伪造头验证 |
 | 有写权限的人可从分支运行改过的 workflow | 分支保护禁止绕过，CODEOWNERS 管 `.github/workflows/` 与 `deploy/`，需要全自动时不再叠加环境审批 |
+| `PII_KEYS` 丢失 | 身份证、银行卡等字段无法解密，且不可重新生成；与数据库备份分开保管，轮换时保留旧版本密钥 |
 | 迁移不可回滚 | 备份先行，迁移遵循扩展与收缩 |
 | 磁盘增长 | 发布时清理旧镜像，备份保留 7 天，日志总量设上限 |
 
