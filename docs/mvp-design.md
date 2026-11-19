@@ -23,7 +23,7 @@
 | API 契约 | springdoc-openapi 3.2.x、openapi-typescript | 从后端 API 生成 OpenAPI 描述，再生成前端请求和响应类型。 [Spring Boot 兼容矩阵](https://springdoc.org/#what-is-the-compatibility-matrix-of-springdoc-openapi-with-spring-boot) |
 | 文件与导出 | 私有文件存储、Apache POI | 保存报销附件，导出 `.xlsx` 台账。 [Apache POI](https://poi.apache.org/components/spreadsheet/) |
 | 测试 | JUnit、Spring Boot Test、Testcontainers | 验证业务规则和真实 MySQL 上的事务行为。 |
-| 生产部署 | Cloudflare Workers Builds、Workers Static Assets、GitHub Actions、GHCR、Docker Compose、Nginx | 发布流程见[持续集成与发布](#持续集成与发布)。 |
+| 生产部署 | Cloudflare Workers（静态资源与 API 反代）、GitHub Actions、GHCR、Docker Compose、Cloudflare Tunnel | 形态与流程见[部署与交付](deploy.md)。 |
 
 ## 数据访问与约束
 
@@ -36,34 +36,21 @@
 
 - 每套环境由一个后端进程承载业务模块和公共能力。该环境的业务数据、登录会话和待办共用其 MySQL 实例。首版不部署 Redis、消息队列或独立工作流服务。
 - 浏览器通过同域入口访问页面和 API，使用会话 Cookie，写请求执行 CSRF 校验。账号停用或角色变更时撤销该账号的已有会话。 [Spring Security CSRF](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html) · [Spring Session 按用户查询会话](https://docs.spring.io/spring-session/reference/api.html)
-- 后端将原始附件写入当前环境的私有存储，在数据库保存业务归属、原文件名、存储键和文件哈希。附件目录由 `EMP_UPLOAD_DIR` 指定，读法与默认值见 [`AttachmentService`](../backend/src/main/java/com/jianheng/emp/approval/AttachmentService.java)，变量填写见 [README](../README.md#本地启动)。后端运行日志统一写入 `${EMP_LOG_DIR}/backend.log`，默认最多保留 90 天，配置见 [`application.yml`](../backend/src/main/resources/application.yml)。下载和在线预览经业务对象授权后由后端提供。生产在统一备份窗口内暂停业务写入，一起备份数据库和附件，并在试点前演练配对恢复。
+- 后端将原始附件写入当前环境的私有存储，在数据库保存业务归属、原文件名、存储键和文件哈希。附件目录由 `EMP_UPLOAD_DIR` 指定，读法与默认值见 [`AttachmentService`](../backend/src/main/java/com/jianheng/emp/approval/AttachmentService.java)，变量填写见 [README](../README.md#本地启动)。后端运行日志统一写入 `EMP_LOG_DIR` 指定的文件，滚动、保留与总量策略见 [`application.yml`](../backend/src/main/resources/application.yml)。下载和在线预览经业务对象授权后由后端提供。生产在统一备份窗口内暂停业务写入，一起备份数据库和附件，并在试点前演练配对恢复。
 
 ### 环境划分
 
 | 环境 | 运行方式 | 数据与访问 |
 | --- | --- | --- |
 | 本地开发与测试 `dev` | 开发联调和发布前验收在本地完成。启动方式见 [README](../README.md#本地启动)。 | 使用独立开发账号和附件目录。测试使用模拟或脱敏数据。 |
-| 生产 `prod` | Cloudflare 提供前端和 API 入口。独立 Linux 主机或虚拟机通过 Docker Compose 运行 Nginx、后端和 MySQL 8.4。 | 使用正式域名和 HTTPS，MySQL 仅在内部网络可达。生产数据库、账号、密钥、附件卷和备份独立管理。 |
+| 生产 `prod` | Cloudflare 提供前端与 API 入口，单台 Linux 主机通过 Docker Compose 运行后端、MySQL 8.4 与隧道。 | 使用正式域名和 HTTPS，数据库不对外暴露。生产数据库、账号、密钥、附件卷和备份独立管理，见[部署与交付](deploy.md)。 |
 
-- 本地使用 `.env.dev`，加载方式见 [README](../README.md#本地启动)。生产使用 `.env.prod`，可将配置文件挂载到后端容器的 `/run/config/.env.prod`，并设置 `SPRING_CONFIG_IMPORT=file:/run/config/.env.prod[.properties]`。本地配置与产物的忽略规则见 [`.gitignore`](../.gitignore)。 [Spring Boot 外部配置](https://docs.spring.io/spring-boot/reference/features/external-config.html) · [Compose 生产部署](https://docs.docker.com/compose/how-tos/production/)
+- 本地使用 `.env.dev`，加载方式见 [README](../README.md#本地启动)；生产的配置分工、密钥与发布方式见[部署与交付](deploy.md)。本地配置与产物的忽略规则见 [`.gitignore`](../.gitignore)。 [Spring Boot 外部配置](https://docs.spring.io/spring-boot/reference/features/external-config.html)
 - 本地验证方式见 [README](../README.md#验证)。CI 的 MySQL 集成测试计划使用临时容器。 [Testcontainers 运行环境](https://java.testcontainers.org/supported_docker_environment/)
 
 ### 持续集成与发布
 
-**分支。** `master` 是唯一长期分支。开发、联调和验收使用本地 `dev` profile。验收通过后推送 `origin/master`，触发两条生产流水线。
-
-**访问链路。** 应用域名绑定 Cloudflare Worker。静态资源由 Workers Static Assets 提供，前端路由使用 SPA 回退，`/api` 和 `/api/*` 优先交给 Worker 转发到生产源站，再由 Nginx 转给 Spring Boot。前端始终请求相对路径 `/api`。转发保留请求方法、请求体、Cookie、CSRF 请求头及响应 `Set-Cookie`，API 响应走源站且不进入静态缓存。会话 Cookie 限定在应用域名，不设置源站 `Domain`。生产源站应仅接受受信代理的请求。 [Workers 静态资源路由](https://developers.cloudflare.com/workers/wrangler/configuration/#assets)
-
-| 环节 | 触发 | 执行内容 |
-| --- | --- | --- |
-| CI | 推送 `master` | GitHub Actions 执行前端类型检查、测试和构建。后端用 Maven Wrapper 构建并执行相关测试，数据库集成测试使用临时 MySQL。 |
-| 后端生产发布 | 推送 `master` | GitHub Actions 检查待发布提交，构建后端镜像并推送 GHCR，记录 Git SHA 与镜像摘要。生产机备份数据库和附件，拉取指定镜像并通过 Compose 更新后端，检查 Flyway 迁移与应用健康。 |
-| 前端生产发布 | 推送 `master` | Cloudflare Workers Builds 连接 GitHub 仓库，将生产分支设为 `master`，关闭预览构建。以 `frontend/` 作为构建根目录，运行 `npm run build` 和 `npx wrangler deploy`。Wrangler 配置将 `dist/` 作为静态资源目录，并设置 Worker API 路由。 |
-| 发布验证 | 前后端发布完成后 | 经正式域名检查首页和同域 API，验证会话登录、审批及附件访问。用 Git SHA 对照 Cloudflare 部署版本与后端镜像摘要。需要回退时按记录恢复前端或后端版本，涉及数据库变更时先确认迁移兼容性。 |
-
-后端发布可由 Runner 经 SSH 调用生产机部署脚本，前提是 Runner 能访问部署入口。连接凭据放在 GitHub Secrets。推送镜像使用 `GITHUB_TOKEN` 的 `packages: write` 权限。若 GHCR 镜像为私有，生产机使用有包访问权且带 `read:packages` 权限的凭据拉取镜像。后端生产更新串行执行。 [GitHub Actions 触发事件](https://docs.github.com/en/actions/reference/workflows/events-that-trigger-workflows#push) · [Cloudflare 构建分支](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/) · [Cloudflare 构建配置](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/) · [GHCR 权限](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-
-Cloudflare 和 GitHub Actions 独立执行，前后端都可能先上线，一侧失败时另一侧也可能成功。涉及接口变化时，先发布向后兼容的 API，再发布依赖新 API 的前端，最后移除旧字段或接口。需要让前端等待后端通过健康检查时，统一用 GitHub Actions 调用 Wrangler，并关闭 Cloudflare 的自动生产构建以保持一个发布入口。 [Cloudflare 外部 CI/CD](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)
+`master` 是唯一长期分支，推送触发后端流水线与 Cloudflare 构建。前后端独立发布，接口变更先发布向后兼容的 API，再切换前端，最后移除旧字段。流水线、发布与回滚见[部署与交付](deploy.md)。
 
 ## 模块边界和数据归属
 

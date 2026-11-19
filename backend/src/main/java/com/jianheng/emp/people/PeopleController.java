@@ -35,7 +35,7 @@ class PeopleController {
 
     @GetMapping("/employees") List<PeopleMapper.Employee> employees(Authentication auth) {
         hr(auth);
-        return mapper.employees();
+        return people.employees();
     }
 
     @GetMapping("/employment-flow") List<PeopleService.EmploymentFlow> employmentFlow(Authentication auth) {

@@ -7,6 +7,7 @@ import com.jianheng.emp.people.PeopleMapper;
 import com.jianheng.emp.security.AccountMapper;
 import com.jianheng.emp.security.AccountService.CurrentUser;
 import com.jianheng.emp.security.Role;
+import com.jianheng.emp.security.pii.PiiCipher;
 import com.jianheng.emp.web.AuditMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,14 +26,16 @@ class WorkflowService {
     private final AccountMapper accounts;
     private final AuditMapper audit;
     private final WorkflowNotifier notifier;
+    private final PiiCipher cipher;
 
     WorkflowService(WorkflowMapper mapper, PeopleMapper people, AccountMapper accounts, AuditMapper audit,
-                    WorkflowNotifier notifier) {
+                    WorkflowNotifier notifier, PiiCipher cipher) {
         this.mapper = mapper;
         this.people = people;
         this.accounts = accounts;
         this.audit = audit;
         this.notifier = notifier;
+        this.cipher = cipher;
     }
 
     @Transactional
@@ -270,8 +273,16 @@ class WorkflowService {
         var payment = mapper.payment(id);
         var paymentFiles = payment == null ? List.<Attachment>of() : mapper.paymentFiles(id).stream()
             .map(WorkflowService::attachment).toList();
-        return new Detail(summary, document.ownerId(), revisions, payment, paymentFiles,
-            document.kind() == Kind.EXPENSE ? mapper.payeeAccount(document.ownerId()) : null);
+        return new Detail(summary, document.ownerId(), revisions, payment, paymentFiles, payeeAccount(document));
+    }
+
+    /** 报销详情里的收款账户：库中银行卡号是密文，只对能看详情的人还原。 */
+    private PayeeAccount payeeAccount(Document document) {
+        if (document.kind() != Kind.EXPENSE) return null;
+        var payee = mapper.payeeAccount(document.ownerId());
+        if (payee == null) return null;
+        return new PayeeAccount(payee.name(), payee.bankName(),
+            cipher.decrypt(payee.bankCard(), "employee.bank_card"), payee.cnapsCode());
     }
 
     boolean canRead(CurrentUser actor, Document document) {

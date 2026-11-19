@@ -21,6 +21,8 @@ public interface PeopleMapper {
     record Employment(long id, long departmentId, String departmentName, long positionId, String positionName,
                       LocalDate joinedOn, LocalDate departedOn) {}
     record EmploymentFlowCount(String month, int hired, int departed) {}
+    record SensitiveRow(long id, String phone, String idCard, String idCardBidx, String emergencyPhone,
+                        String bankCard) {}
 
     String EMPLOYEE_SELECT = """
         SELECT e.id, e.mis, e.name, emp.department_id, emp.position_id, e.phone, e.email, e.id_card, e.address,
@@ -63,8 +65,8 @@ public interface PeopleMapper {
         WHERE e.id = #{id}
         """) EmployeeCard employeeCard(long id);
     @Select(EMPLOYEE_SELECT + "WHERE e.mis=#{mis}") Employee employeeByMis(String mis);
-    @Select("SELECT id FROM employee WHERE id_card=#{idCard} AND id<>#{excludeId}")
-    Long employeeByIdCard(@Param("idCard") String idCard, @Param("excludeId") long excludeId);
+    @Select("SELECT id FROM employee WHERE id_card_bidx=#{blindIndex} AND id<>#{excludeId}")
+    Long employeeByIdCard(@Param("blindIndex") String blindIndex, @Param("excludeId") long excludeId);
     @Select("SELECT id FROM employee WHERE mis=#{mis}") Long employeeIdByMis(String mis);
     @Select("SELECT id FROM employee WHERE id=#{id} FOR UPDATE") Long lockEmployee(long id);
     @Select("SELECT id FROM department ORDER BY id FOR UPDATE") List<Long> lockDepartments();
@@ -119,19 +121,30 @@ public interface PeopleMapper {
     int currentPositionEmployments(long id);
 
     @Insert("""
-        INSERT INTO employee(mis,name,phone,email,id_card,address,emergency_contact,emergency_phone,bank_card,bank_name,cnaps_code,updated_by)
-        VALUES(#{mis},#{value.name},#{value.phone},#{value.email},#{value.idCard},#{value.address},#{value.emergencyContact},
+        INSERT INTO employee(mis,name,phone,email,id_card,id_card_bidx,address,emergency_contact,emergency_phone,bank_card,bank_name,cnaps_code,updated_by)
+        VALUES(#{mis},#{value.name},#{value.phone},#{value.email},#{value.idCard},#{idCardBidx},#{value.address},#{value.emergencyContact},
                #{value.emergencyPhone},#{value.bankCard},#{value.bankName},#{value.cnapsCode},#{actor})
         """)
-    void createEmployee(String mis, @Param("value") PeopleService.EmployeeInput value, @Param("actor") long actor);
+    void createEmployee(String mis, @Param("value") PeopleService.EmployeeInput value,
+                        @Param("idCardBidx") String idCardBidx, @Param("actor") long actor);
     @Update("""
         UPDATE employee SET name=#{value.name},phone=#{value.phone},email=#{value.email},id_card=#{value.idCard},
-               address=#{value.address},emergency_contact=#{value.emergencyContact},emergency_phone=#{value.emergencyPhone},
-               bank_card=#{value.bankCard},bank_name=#{value.bankName},cnaps_code=#{value.cnapsCode},updated_by=#{actor}
+               id_card_bidx=#{idCardBidx},address=#{value.address},emergency_contact=#{value.emergencyContact},
+               emergency_phone=#{value.emergencyPhone},bank_card=#{value.bankCard},bank_name=#{value.bankName},
+               cnaps_code=#{value.cnapsCode},updated_by=#{actor}
         WHERE id=#{id}
         """)
-    void updateEmployee(long id, @Param("value") PeopleService.EmployeeInput value, @Param("actor") long actor);
+    void updateEmployee(long id, @Param("value") PeopleService.EmployeeInput value,
+                        @Param("idCardBidx") String idCardBidx, @Param("actor") long actor);
     @Update("UPDATE employee SET avatar_key=#{key}, updated_at=updated_at WHERE id=#{id}") void setAvatar(long id, String key);
+    @Select("SELECT id, phone, id_card, id_card_bidx, emergency_phone, bank_card FROM employee ORDER BY id")
+    List<SensitiveRow> sensitiveRows();
+    @Update("""
+        UPDATE employee SET phone=#{row.phone}, id_card=#{row.idCard}, id_card_bidx=#{row.idCardBidx},
+               emergency_phone=#{row.emergencyPhone}, bank_card=#{row.bankCard}
+        WHERE id=#{row.id}
+        """)
+    void updateSensitive(@Param("row") SensitiveRow row);
 
     @Insert("""
         INSERT INTO employment(employee_id,department_id,position_id,joined_on,departed_on,updated_by)

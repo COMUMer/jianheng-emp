@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 
 import com.jianheng.emp.people.PeopleMapper;
 import com.jianheng.emp.security.AccountMapper;
+import com.jianheng.emp.security.pii.TestPii;
 import com.jianheng.emp.web.AuditMapper;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,7 +19,7 @@ class WorkflowOverdueTest {
     private final AccountMapper accounts = mock(AccountMapper.class);
     private final AuditMapper audit = mock(AuditMapper.class);
     private final WorkflowNotifier notifier = mock(WorkflowNotifier.class);
-    private final WorkflowService service = new WorkflowService(mapper, people, accounts, audit, notifier);
+    private final WorkflowService service = new WorkflowService(mapper, people, accounts, audit, notifier, TestPii.CIPHER);
 
     @Test
     void returnsOverdueTasksAsSystem() {

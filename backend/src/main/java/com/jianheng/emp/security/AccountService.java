@@ -11,6 +11,7 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import com.jianheng.emp.security.pii.PiiCipher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.session.jdbc.JdbcIndexedSessionRepository;
 import org.springframework.stereotype.Service;
@@ -36,17 +37,19 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
     private final AccountMapper mapper;
     private final AuditMapper audit;
     private final PasswordEncoder passwords;
+    private final PiiCipher cipher;
     private final JdbcIndexedSessionRepository sessions;
     private final String adminUsername;
     private final String adminPassword;
 
-    public AccountService(AccountMapper mapper, AuditMapper audit, PasswordEncoder passwords,
+    public AccountService(AccountMapper mapper, AuditMapper audit, PasswordEncoder passwords, PiiCipher cipher,
                           JdbcIndexedSessionRepository sessions,
                           @Value("${EMP_ADMIN_USER:admin}") String adminUsername,
                           @Value("${EMP_ADMIN_PASSWORD:}") String adminPassword) {
         this.mapper = mapper;
         this.audit = audit;
         this.passwords = passwords;
+        this.cipher = cipher;
         this.sessions = sessions;
         this.adminUsername = adminUsername;
         this.adminPassword = adminPassword;
@@ -94,7 +97,7 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
         if (roles.contains(Role.ADMIN)) throw new IllegalArgumentException("员工账号不可授予系统管理员角色");
         roles.add(Role.EMPLOYEE);
         if (account == null) {
-            String idCard = mapper.employeeIdCard(employeeId);
+            String idCard = cipher.decrypt(mapper.employeeIdCard(employeeId), "employee.id_card");
             if (idCard == null || idCard.length() < 6) throw new IllegalArgumentException("员工身份证号不完整，无法开通账号");
             String initialPassword = idCard.substring(idCard.length() - 6).toUpperCase(Locale.ROOT);
             mapper.insert(loginName, passwords.encode(initialPassword), employeeId);

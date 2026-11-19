@@ -16,6 +16,7 @@ import static org.mockito.Mockito.when;
 import com.jianheng.emp.security.AccountService;
 import com.jianheng.emp.security.AccountService.CurrentUser;
 import com.jianheng.emp.security.Role;
+import com.jianheng.emp.security.pii.TestPii;
 import com.jianheng.emp.web.AuditMapper;
 import java.time.LocalDate;
 import java.util.List;
@@ -28,7 +29,8 @@ class PeopleServiceTest {
     private final PeopleMapper mapper = mock(PeopleMapper.class);
     private final AuditMapper audit = mock(AuditMapper.class);
     private final AccountService accounts = mock(AccountService.class);
-    private final PeopleService service = new PeopleService(mapper, audit, accounts);
+    private final EmployeeSensitive sensitive = new EmployeeSensitive(TestPii.CIPHER);
+    private final PeopleService service = new PeopleService(mapper, audit, accounts, sensitive);
     private final CurrentUser actor = new CurrentUser(7, "hr", null, null, null, null, List.of(Role.HR));
 
     @Test
@@ -40,15 +42,18 @@ class PeopleServiceTest {
         when(mapper.employeeIdByMis("testuser")).thenReturn(1L);
         when(mapper.employee(1L)).thenReturn(created);
 
-        assertSame(created, service.saveEmployee(actor, null, input));
+        var returned = service.saveEmployee(actor, null, input);
+        assertEquals(created.id(), returned.id());
+        assertEquals("13800138000", returned.phone());
+        assertEquals("11010519491231002X", returned.idCard());
 
         var saved = ArgumentCaptor.forClass(PeopleService.EmployeeInput.class);
         var employment = ArgumentCaptor.forClass(PeopleService.EmploymentInput.class);
         verify(mapper).bumpMisSequence("testuser");
-        verify(mapper).createEmployee(eq("testuser"), saved.capture(), eq(7L));
+        verify(mapper).createEmployee(eq("testuser"), saved.capture(), eq(blindIndex()), eq(7L));
         verify(mapper).createEmployment(eq(1L), employment.capture(), isNull(), eq(7L));
-        assertEquals("13800138000", saved.getValue().phone());
-        assertEquals("11010519491231002X", saved.getValue().idCard());
+        assertEquals("13800138000", TestPii.CIPHER.decrypt(saved.getValue().phone(), EmployeeSensitive.PHONE));
+        assertEquals("11010519491231002X", TestPii.CIPHER.decrypt(saved.getValue().idCard(), EmployeeSensitive.ID_CARD));
         assertEquals(LocalDate.of(2020, 1, 1), employment.getValue().joinedOn());
         assertEquals(1L, employment.getValue().departmentId());
         verify(audit).record(7L, "EMPLOYEE_CREATE", 1L, "入职建档");
@@ -128,13 +133,13 @@ class PeopleServiceTest {
 
         service.saveEmployee(actor, null, validInput());
 
-        verify(mapper).createEmployee(eq("testuser3"), any(), eq(7L));
+        verify(mapper).createEmployee(eq("testuser3"), any(), eq(blindIndex()), eq(7L));
     }
 
     @Test
     void returnsTheExistingIdentityWhenTheIdCardIsDuplicated() {
         mockIdentityDependencies();
-        when(mapper.employeeByIdCard("11010519491231002X", 0L)).thenReturn(9L);
+        when(mapper.employeeByIdCard(blindIndex(), 0L)).thenReturn(9L);
         when(mapper.employee(9L)).thenReturn(employee(9, "testuser", LocalDate.of(2026, 11, 15)));
 
         var error = assertThrows(EmployeeConflict.class, () -> service.saveEmployee(actor, null, validInput()));
@@ -143,7 +148,7 @@ class PeopleServiceTest {
         assertEquals("testuser", error.employeeName());
         assertEquals(LocalDate.of(2026, 11, 15), error.departedOn());
         assertTrue(error.getMessage().contains("重新入职"));
-        verify(mapper, never()).createEmployee(any(), any(), anyLong());
+        verify(mapper, never()).createEmployee(any(), any(), any(), anyLong());
     }
 
     @Test
@@ -154,11 +159,11 @@ class PeopleServiceTest {
         when(mapper.lockEmployee(1L)).thenReturn(1L);
         when(mapper.employee(1L)).thenReturn(before);
         when(mapper.currentEmployment(1L)).thenReturn(employment(3, LocalDate.of(2020, 1, 1), null));
-        when(mapper.employeeByIdCard("11010519491231002X", 1L)).thenReturn(null);
+        when(mapper.employeeByIdCard(blindIndex(), 1L)).thenReturn(null);
 
         service.saveEmployee(actor, 1L, validInput());
 
-        verify(mapper).updateEmployee(eq(1L), any(), eq(7L));
+        verify(mapper).updateEmployee(eq(1L), any(), eq(blindIndex()), eq(7L));
         verify(mapper).updateEmployment(eq(3L), any(), eq(7L));
         verify(audit).record(7L, "EMPLOYEE_UPDATE", 1L, "更新档案");
     }
@@ -172,7 +177,7 @@ class PeopleServiceTest {
         when(mapper.lockEmployee(1L)).thenReturn(1L);
         when(mapper.employee(1L)).thenReturn(before, after);
         when(mapper.currentEmployment(1L)).thenReturn(employment(3, LocalDate.of(2020, 1, 1), null));
-        when(mapper.employeeByIdCard("11010519491231002X", 1L)).thenReturn(null);
+        when(mapper.employeeByIdCard(blindIndex(), 1L)).thenReturn(null);
         when(mapper.departments()).thenReturn(List.of(
             department(1, "见衡", null), department(2, "总办", 1L), department(3, "研发业务部", 2L)));
 
@@ -193,7 +198,7 @@ class PeopleServiceTest {
         var error = assertThrows(IllegalArgumentException.class, () -> service.saveEmployee(actor, 1L, validInput()));
 
         assertTrue(error.getMessage().contains("重新入职"));
-        verify(mapper, never()).updateEmployee(anyLong(), any(), anyLong());
+        verify(mapper, never()).updateEmployee(anyLong(), any(), any(), anyLong());
     }
 
     @Test
@@ -317,7 +322,11 @@ class PeopleServiceTest {
     private void mockIdentityDependencies() {
         when(mapper.department(1L)).thenReturn(department(1, "研发部"));
         when(mapper.position(1L)).thenReturn(position(1, "工程师"));
-        when(mapper.employeeByIdCard("11010519491231002X", 0L)).thenReturn(null);
+        when(mapper.employeeByIdCard(blindIndex(), 0L)).thenReturn(null);
+    }
+
+    private static String blindIndex() {
+        return TestPii.CIPHER.blindIndex("11010519491231002X");
     }
 
     private static PeopleMapper.Department department(long id, String name) {
@@ -345,6 +354,10 @@ class PeopleServiceTest {
         return new PeopleService.RehireInput(joinedOn, departmentId, positionId, account);
     }
 
+    private static String encrypt(String value, String field) {
+        return TestPii.CIPHER.encrypt(value, field);
+    }
+
     private static PeopleMapper.Employment employment(long id, LocalDate joinedOn, LocalDate departedOn) {
         return new PeopleMapper.Employment(id, 1, "研发部", 1, "工程师", joinedOn, departedOn);
     }
@@ -367,8 +380,10 @@ class PeopleServiceTest {
     }
 
     private static PeopleMapper.Employee employee(long id, String mis, LocalDate departedOn) {
-        return new PeopleMapper.Employee(id, mis, "testuser", 1, 1, "13800138000", "test@example.com",
-            "11010519491231002X", "深圳市南山区", "李四", "13900139000", "6222020200112233445",
+        return new PeopleMapper.Employee(id, mis, "testuser", 1, 1,
+            encrypt("13800138000", EmployeeSensitive.PHONE), "test@example.com",
+            encrypt("11010519491231002X", EmployeeSensitive.ID_CARD), "深圳市南山区", "李四",
+            encrypt("13900139000", EmployeeSensitive.EMERGENCY_PHONE), encrypt("6222020200112233445", EmployeeSensitive.BANK_CARD),
             "招商银行", "308584000013", null, departedOn == null ? LocalDate.of(2026, 12, 1) : LocalDate.of(2020, 1, 1),
             departedOn, "研发部", "工程师", null, null, null, null);
     }

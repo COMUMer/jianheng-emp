@@ -10,6 +10,7 @@ import static org.mockito.Mockito.*;
 
 import com.jianheng.emp.people.PeopleMapper;
 import com.jianheng.emp.security.AccountMapper;
+import com.jianheng.emp.security.pii.TestPii;
 import com.jianheng.emp.security.AccountService.CurrentUser;
 import com.jianheng.emp.security.Role;
 import com.jianheng.emp.web.AuditMapper;
@@ -24,7 +25,7 @@ class WorkflowPaymentTest {
     private final AccountMapper accounts = mock(AccountMapper.class);
     private final AuditMapper audit = mock(AuditMapper.class);
     private final WorkflowNotifier notifier = mock(WorkflowNotifier.class);
-    private final WorkflowService service = new WorkflowService(mapper, people, accounts, audit, notifier);
+    private final WorkflowService service = new WorkflowService(mapper, people, accounts, audit, notifier, TestPii.CIPHER);
     private final CurrentUser payer = new CurrentUser(5, "payer", 11L, null, null, null, List.of(Role.PAYER));
 
     @Test

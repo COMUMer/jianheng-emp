@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.jianheng.emp.security.AccountService.AccountInput;
 import com.jianheng.emp.security.AccountService.AccountView;
 import com.jianheng.emp.security.AccountService.CurrentUser;
+import com.jianheng.emp.security.pii.TestPii;
 import com.jianheng.emp.web.AuditMapper;
 import java.util.List;
 import java.util.Set;
@@ -30,7 +31,7 @@ class AccountServiceTest {
     private final AccountMapper mapper = mock(AccountMapper.class);
     private final PasswordEncoder passwords = mock(PasswordEncoder.class);
     private final AccountService service = new AccountService(mapper, mock(AuditMapper.class),
-        passwords, mock(JdbcIndexedSessionRepository.class), "admin", "");
+        passwords, TestPii.CIPHER, mock(JdbcIndexedSessionRepository.class), "admin", "");
 
     @Test
     void exposesTheMisOfTheSignedInEmployee() {
@@ -58,7 +59,7 @@ class AccountServiceTest {
     void opensEmployeeAccountsWithTheMisAndIdCardSuffixAsTheInitialPassword() {
         var actor = new CurrentUser(1, "admin", null, null, null, null, List.of(Role.ADMIN));
         var account = new AccountMapper.Account(9, "xianghongrui", "hash", 3L, "xianghongrui", "向鸿锐", null, true, null, null, null, "董事");
-        when(mapper.employeeIdCard(3L)).thenReturn("110105199001011232");
+        when(mapper.employeeIdCard(3L)).thenReturn(TestPii.CIPHER.encrypt("110105199001011232", "employee.id_card"));
         when(mapper.byEmployee(3L)).thenReturn(null, account, account);
         when(mapper.roles(9L)).thenReturn(List.of(Role.EMPLOYEE));
         when(passwords.encode("011232")).thenReturn("hash");
@@ -97,10 +98,10 @@ class AccountServiceTest {
         var mapper = mock(AccountMapper.class);
         var encoder = new BCryptPasswordEncoder();
         var service = new AccountService(mapper, mock(AuditMapper.class), encoder,
-            mock(JdbcIndexedSessionRepository.class), "admin", "");
+            TestPii.CIPHER, mock(JdbcIndexedSessionRepository.class), "admin", "");
         var actor = new CurrentUser(1, "admin", null, null, null, null, List.of(Role.ADMIN));
         var account = new AccountMapper.Account(9, "xianghongrui", encoder.encode("011232"), 3L, "xianghongrui", "向鸿锐", null, true, null, null, null, "董事");
-        when(mapper.employeeIdCard(3L)).thenReturn("110105199001011232");
+        when(mapper.employeeIdCard(3L)).thenReturn(TestPii.CIPHER.encrypt("110105199001011232", "employee.id_card"));
         when(mapper.byEmployee(3L)).thenReturn(null, account);
         when(mapper.roles(9L)).thenReturn(List.of(Role.EMPLOYEE));
         TransactionSynchronizationManager.initSynchronization();

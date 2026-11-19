@@ -50,17 +50,24 @@ public class PeopleService {
     private final PeopleMapper mapper;
     private final AuditMapper audit;
     private final AccountService accounts;
+    private final EmployeeSensitive sensitive;
 
-    PeopleService(PeopleMapper mapper, AuditMapper audit, AccountService accounts) {
+    PeopleService(PeopleMapper mapper, AuditMapper audit, AccountService accounts, EmployeeSensitive sensitive) {
         this.mapper = mapper;
         this.audit = audit;
         this.accounts = accounts;
+        this.sensitive = sensitive;
+    }
+
+    /** 列表：手机号还原成明文供展示和搜索，身份证与银行卡不下发。 */
+    public List<PeopleMapper.Employee> employees() {
+        return mapper.employees().stream().map(sensitive::revealForList).toList();
     }
 
     public PeopleMapper.Employee employee(long id) {
         var employee = mapper.employee(id);
         if (employee == null) throw new IllegalArgumentException("员工不存在");
-        return employee;
+        return sensitive.reveal(employee);
     }
 
     public PeopleMapper.EmployeeCard employeeCard(long id) {
@@ -74,18 +81,20 @@ public class PeopleService {
         var clean = EmployeeProfile.normalize(input);
         EmployeeProfile.validateIdentity(clean);
         EmployeeProfile.validateEmployment(clean);
+        var secured = sensitive.secure(clean);
+        String idCardBidx = sensitive.idCardBlindIndex(clean.idCard());
         if (id == null) {
             requireOrganization(clean.departmentId(), clean.positionId(), true);
-            var duplicate = mapper.employeeByIdCard(clean.idCard(), 0L);
+            var duplicate = mapper.employeeByIdCard(idCardBidx, 0L);
             if (duplicate != null) throw conflict(duplicate);
             String base = Mis.base(clean.name());
             mapper.bumpMisSequence(base);
             String mis = Mis.numbered(base, mapper.misSequence(base));
-            mapper.createEmployee(mis, clean, user.id());
+            mapper.createEmployee(mis, secured, idCardBidx, user.id());
             long employeeId = mapper.employeeIdByMis(mis);
             mapper.createEmployment(employeeId, employment(clean), null, user.id());
             audit.record(user.id(), "EMPLOYEE_CREATE", employeeId, "入职建档");
-            return mapper.employee(employeeId);
+            return employee(employeeId);
         }
         mapper.lockEmployee(id);
         var before = employee(id);
@@ -93,10 +102,12 @@ public class PeopleService {
         if (current == null) throw new IllegalArgumentException("离职档案仅供查看，请先办理重新入职");
         requireOrganization(clean.departmentId(), clean.positionId(),
             before.departmentId() != clean.departmentId() || before.positionId() != clean.positionId());
-        if (mapper.employeeByIdCard(clean.idCard(), id) != null) throw new IllegalArgumentException("身份证号已存在");
-        mapper.updateEmployee(id, clean, user.id());
+        if (mapper.employeeByIdCard(idCardBidx, id) != null) {
+            throw new IllegalArgumentException("身份证号已存在");
+        }
+        mapper.updateEmployee(id, secured, idCardBidx, user.id());
         mapper.updateEmployment(current.id(), employment(clean), user.id());
-        var after = mapper.employee(id);
+        var after = employee(id);
         String detail = "更新档案";
         if (before.departmentId() != after.departmentId() || before.positionId() != after.positionId()) {
             var departments = mapper.departments();

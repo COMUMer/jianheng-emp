@@ -1,6 +1,6 @@
 # jianheng-emp
 
-企业内部管理平台。[首版实现方案](docs/mvp-design.md) · [前端品牌与登录](docs/frontend.md) · [人员档案](docs/people.md)
+企业内部管理平台。[首版实现方案](docs/mvp-design.md) · [部署与交付](docs/deploy.md) · [前端品牌与登录](docs/frontend.md) · [人员档案](docs/people.md)
 
 ## 本地启动
 
@@ -52,6 +52,24 @@ $headers = @{ Authorization = "Bearer $env:RESEND_API_KEY" }
 $body = @{ from = 'JH-EMP <no-reply@mail.example.com>'; to = @('you@example.com'); subject = 'Resend 联调'; text = 'ok' } | ConvertTo-Json
 Invoke-RestMethod -Method Post 'https://api.resend.com/emails' -Headers $headers -ContentType 'application/json' -Body $body
 ```
+
+## 敏感字段密钥（身份证、银行卡、手机号）
+
+身份证、银行卡、手机号和紧急联系电话在库里存密文。密钥由 `PII_KEYS` 提供，格式 `v1:<32 字节 base64>`，多个版本用逗号分隔用于轮换（密文前缀记录版本）。
+
+生成后写入 `.env.dev`（生产为 `.env.prod`）：
+
+```powershell
+$key = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($key)
+'PII_KEYS=v1:' + [Convert]::ToBase64String($key)
+```
+
+Linux 或 macOS 用 `echo "PII_KEYS=v1:$(openssl rand -base64 32)"`。等号后面的值必须是 `v1:` 加 44 个 base64 字符（共 47 个字符，即 32 字节），否则启动会报 `PII_KEYS 每个密钥必须是 32 字节`。
+
+- 密钥只放环境变量，不提交仓库；**丢失后这些字段无法解密**，需与数据库备份分开保存。
+- 启动时 [EmployeePiiBackfill.java](backend/src/main/java/com/jianheng/emp/people/EmployeePiiBackfill.java) 把历史明文就地加密；加解密与盲索引见 [PiiCipher.java](backend/src/main/java/com/jianheng/emp/security/pii/PiiCipher.java)。
+- 身份证需要等值查重，额外存一列 HMAC 盲索引 `employee.id_card_bidx` 并加唯一约束。
 
 ## 验证
 
