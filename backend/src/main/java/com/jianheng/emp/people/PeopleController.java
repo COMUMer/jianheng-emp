@@ -38,11 +38,21 @@ class PeopleController {
         return mapper.employees();
     }
 
+    @GetMapping("/employment-flow") List<PeopleService.EmploymentFlow> employmentFlow(Authentication auth) {
+        hr(auth);
+        return people.employmentFlow();
+    }
+
     @GetMapping("/employees/{id}") PeopleService.EmployeeDetail detail(Authentication auth, @PathVariable long id) {
         var actor = accounts.current(auth);
         boolean manager = actor.has(Role.ADMIN) || actor.has(Role.HR);
         if (!manager && !java.util.Objects.equals(actor.employeeId(), id)) accounts.require(actor, Role.ADMIN, Role.HR);
-        return new PeopleService.EmployeeDetail(people.employee(id), actor.has(Role.ADMIN) ? accounts.employeeAccount(id) : null, audit.employeeHistory(id));
+        return new PeopleService.EmployeeDetail(people.employee(id), manager ? accounts.employeeAccount(id) : null,
+            mapper.employments(id), audit.employeeHistory(id));
+    }
+
+    @GetMapping("/directory/{id}") PeopleMapper.EmployeeCard directory(@PathVariable long id) {
+        return people.employeeCard(id);
     }
 
     @PostMapping("/me/avatar") EmployeeAvatarService.AvatarView uploadAvatar(Authentication auth, @RequestParam("file") MultipartFile file) throws IOException {
@@ -65,9 +75,14 @@ class PeopleController {
         people.depart(hr(auth), id, input.date());
     }
 
+    @PostMapping("/employees/{id}/employment") PeopleMapper.Employee rehire(Authentication auth, @PathVariable long id,
+        @Valid @RequestBody PeopleService.RehireInput input) {
+        return people.rehire(hr(auth), id, input);
+    }
+
     @PutMapping("/employees/{id}/account") AccountService.AccountView account(Authentication auth, @PathVariable long id, @RequestBody AccountService.AccountInput input) {
         var actor = accounts.current(auth);
-        accounts.require(actor, Role.ADMIN);
+        accounts.require(actor, Role.ADMIN, Role.HR);
         return people.updateAccount(actor, id, input);
     }
 
@@ -79,12 +94,30 @@ class PeopleController {
         people.saveDepartment(hr(auth), id, input);
     }
 
-    @PostMapping("/positions") void createPosition(Authentication auth, @Valid @RequestBody PeopleService.NameInput input) {
-        mapper.createPosition(input.name().strip(), hr(auth).id());
+    @PostMapping("/positions") void createPosition(Authentication auth, @Valid @RequestBody PeopleService.PositionInput input) {
+        people.savePosition(hr(auth), null, input);
     }
 
-    @PutMapping("/positions/{id}") void updatePosition(Authentication auth, @PathVariable long id, @Valid @RequestBody PeopleService.NameInput input) {
-        mapper.updatePosition(id, input.name().strip(), hr(auth).id());
+    @PutMapping("/positions/{id}") void updatePosition(Authentication auth, @PathVariable long id, @Valid @RequestBody PeopleService.PositionInput input) {
+        people.savePosition(hr(auth), id, input);
+    }
+
+    @PutMapping("/departments/{id}/active") void setDepartmentActive(Authentication auth, @PathVariable long id,
+        @Valid @RequestBody PeopleService.ActiveInput input) {
+        people.setDepartmentActive(hr(auth), id, input.active());
+    }
+
+    @DeleteMapping("/departments/{id}") void deleteDepartment(Authentication auth, @PathVariable long id) {
+        people.deleteDepartment(hr(auth), id);
+    }
+
+    @PutMapping("/positions/{id}/active") void setPositionActive(Authentication auth, @PathVariable long id,
+        @Valid @RequestBody PeopleService.ActiveInput input) {
+        people.setPositionActive(hr(auth), id, input.active());
+    }
+
+    @DeleteMapping("/positions/{id}") void deletePosition(Authentication auth, @PathVariable long id) {
+        people.deletePosition(hr(auth), id);
     }
 
     private AccountService.CurrentUser hr(Authentication auth) {

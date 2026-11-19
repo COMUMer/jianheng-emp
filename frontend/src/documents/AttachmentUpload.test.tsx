@@ -1,5 +1,6 @@
 import { App } from 'antd';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { Mock } from 'vitest';
@@ -10,17 +11,23 @@ import { AttachmentUpload } from './AttachmentUpload';
 vi.mock('../api', () => ({
     api: vi.fn(),
     showError: (error: unknown) => error instanceof Error ? error.message : '操作失败',
+    download: vi.fn(),
 }));
 
 const mockedApi = api as unknown as Mock;
 type Attachment = Model<'Attachment'>;
+type ApiOptions = { method?: string; body?: unknown };
 
-function Harness({ initial, invoice, disabled, onBusyChange = vi.fn() }: {
-    initial?: Attachment[]; invoice?: boolean; disabled?: boolean; onBusyChange?: (busy: boolean) => void;
+function Harness({ initial, kind = 'EXPENSE', category, disabled, onBusyChange = vi.fn() }: {
+    initial?: Attachment[];
+    kind?: 'EXPENSE' | 'PURCHASE';
+    category?: NonNullable<Attachment['category']>;
+    disabled?: boolean;
+    onBusyChange?: (busy: boolean) => void;
 }) {
     const [files, setFiles] = useState<Attachment[]>(initial ?? []);
     return <App>
-        <AttachmentUpload files={files} onChange={setFiles} invoice={invoice} disabled={disabled} onBusyChange={onBusyChange} />
+        <AttachmentUpload files={files} onChange={setFiles} kind={kind} category={category} disabled={disabled} onBusyChange={onBusyChange} />
         <output data-testid="count">{files.length}</output>
     </App>;
 }
@@ -29,77 +36,123 @@ function uploadInput(container: HTMLElement) {
     return container.querySelector('input[type="file"]') as HTMLInputElement;
 }
 
-function selectedFile(options: { body?: unknown }) {
+function selectedFile(options: ApiOptions) {
     return options.body instanceof FormData ? options.body.get('file') as File : undefined;
+}
+
+function uploadsAndCategorization() {
+    let sequence = 0;
+    const names = new Map<number, string>();
+    mockedApi.mockImplementation(async (path: string, options: ApiOptions = {}) => {
+        if (path === '/attachments') {
+            const file = selectedFile(options)!;
+            const id = ++sequence;
+            names.set(id, file.name);
+            return { id, originalName: file.name, contentType: 'application/pdf' };
+        }
+        const match = path.match(/^\/attachments\/(\d+)$/);
+        if (match) {
+            const id = Number(match[1]);
+            return { id, originalName: names.get(id), contentType: 'application/pdf',
+                category: (options.body as { category: string }).category };
+        }
+        throw new Error(`Unexpected request: ${path}`);
+    });
 }
 
 beforeEach(() => { mockedApi.mockReset(); });
 
-test('uploads each selected file in order and lists it', async () => {
-    let sequence = 0;
-    mockedApi.mockImplementation(async (_path: string, options: { body?: unknown }) => ({ id: ++sequence, originalName: selectedFile(options)?.name }));
-    const onBusyChange = vi.fn();
-    const { container } = render(<Harness onBusyChange={onBusyChange} />);
+test('uploads files without a category and requires a choice per file', async () => {
+    uploadsAndCategorization();
+    const { container } = render(<Harness />);
 
-    fireEvent.change(uploadInput(container), { target: { files: [new File(['a'], 'a.png'), new File(['b'], 'b.pdf')] } });
+    fireEvent.change(uploadInput(container), { target: { files: [new File(['a'], 'a.pdf', { type: 'application/pdf' }), new File(['b'], 'b.pdf', { type: 'application/pdf' })] } });
 
-    await screen.findByText('a.png');
+    await screen.findByText('a.pdf');
     await screen.findByText('b.pdf');
     expect(mockedApi.mock.calls.map(([path]) => path)).toEqual(['/attachments', '/attachments']);
-    expect(mockedApi.mock.calls.map(([, options]) => selectedFile(options)?.name)).toEqual(['a.png', 'b.pdf']);
+    expect(screen.getAllByRole('combobox')).toHaveLength(2);
+    expect(screen.getAllByText('请选择类型')).toHaveLength(2);
     expect(screen.getByTestId('count').textContent).toBe('2');
-    expect(onBusyChange).toHaveBeenCalledWith(true);
-    expect(onBusyChange).toHaveBeenLastCalledWith(false);
+});
+
+test('assigns a category to a single file', async () => {
+    uploadsAndCategorization();
+    const user = userEvent.setup();
+    const { container } = render(<Harness />);
+
+    fireEvent.change(uploadInput(container), { target: { files: [new File(['a'], 'a.pdf', { type: 'application/pdf' })] } });
+    await screen.findByText('a.pdf');
+
+    await user.click(screen.getByRole('combobox', { name: 'a.pdf的类型' }));
+    await user.click(await screen.findByTitle('付款记录'));
+
+    await waitFor(() => expect(mockedApi).toHaveBeenCalledWith('/attachments/1', { method: 'PATCH', body: { category: 'PAYMENT' } }));
+    await waitFor(() => expect(document.querySelector('.attachment-category-select .ant-select-content')
+        ?.getAttribute('title')).toBe('付款记录'));
+});
+
+test('saves a fixed category upload without asking for a type', async () => {
+    mockedApi.mockImplementation(async (path: string, options: ApiOptions = {}) => {
+        const file = selectedFile(options)!;
+        if (path !== '/attachments?category=PAYMENT') throw new Error(`Unexpected request: ${path}`);
+        return { id: 1, originalName: file.name, contentType: 'application/pdf', category: 'PAYMENT' };
+    });
+    const { container } = render(<Harness category="PAYMENT" />);
+
+    fireEvent.change(uploadInput(container), { target: { files: [new File(['a'], 'proof.pdf', { type: 'application/pdf' })] } });
+
+    expect(await screen.findByText('proof.pdf')).toBeTruthy();
+    expect(mockedApi).toHaveBeenCalledWith('/attachments?category=PAYMENT', { method: 'POST', body: expect.any(FormData) });
+    expect(screen.getByText('附件将按付款记录保存。')).toBeTruthy();
+    expect(screen.getByText('付款记录')).toBeTruthy();
+    expect(screen.queryByRole('combobox')).toBeNull();
 });
 
 test('keeps successful uploads and reports a failed file', async () => {
-    mockedApi.mockImplementation(async (_path: string, options: { body?: unknown }) => {
+    mockedApi.mockImplementation(async (_path: string, options: ApiOptions = {}) => {
         const file = selectedFile(options)!;
         if (file.name === 'b.pdf') throw new Error('上传失败');
-        return { id: 1, originalName: file.name };
+        return { id: 1, originalName: file.name, contentType: 'application/pdf' };
     });
-    const onBusyChange = vi.fn();
-    const { container } = render(<Harness onBusyChange={onBusyChange} />);
+    const { container } = render(<Harness />);
 
-    fireEvent.change(uploadInput(container), { target: { files: [new File(['a'], 'a.png'), new File(['b'], 'b.pdf')] } });
+    fireEvent.change(uploadInput(container), { target: { files: [new File(['a'], 'a.pdf'), new File(['b'], 'b.pdf')] } });
 
-    await screen.findByText('a.png');
+    await screen.findByText('a.pdf');
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1'));
     expect(screen.queryByText('b.pdf')).toBeNull();
-    expect(onBusyChange).toHaveBeenLastCalledWith(false);
 });
 
-test('saves a file invoice number when the field loses focus', async () => {
-    mockedApi.mockResolvedValue({ id: 12, originalName: 'a.png', invoiceKey: 'ABC123' });
-    render(<Harness initial={[{ id: 12, originalName: 'a.png' }]} invoice />);
+test('rejects files over the size limit before uploading', async () => {
+    const file = new File(['a'], 'big.pdf', { type: 'application/pdf' });
+    Object.defineProperty(file, 'size', { value: 50 * 1024 * 1024 + 1 });
+    const { container } = render(<Harness />);
 
-    const field = screen.getByLabelText('票号');
-    fireEvent.change(field, { target: { value: ' abc123 ' } });
-    fireEvent.blur(field);
+    fireEvent.change(uploadInput(container), { target: { files: [file] } });
 
-    await waitFor(() => expect(mockedApi).toHaveBeenCalledWith('/attachments/12', { method: 'PATCH', body: { invoice: ' abc123 ' } }));
-    await waitFor(() => expect((screen.getByLabelText('票号') as HTMLInputElement).value).toBe('ABC123'));
+    expect(await screen.findByText('big.pdf 超过 50MB，无法上传')).toBeTruthy();
+    expect(mockedApi).not.toHaveBeenCalled();
 });
 
-test('blocks the draft while an invoice update is pending', async () => {
-    let finish: ((value: Attachment) => void) | undefined;
-    mockedApi.mockImplementation(() => new Promise<Attachment>(resolve => { finish = resolve; }));
-    const onBusyChange = vi.fn();
-    render(<Harness initial={[{ id: 12, originalName: 'a.png' }]} invoice onBusyChange={onBusyChange} />);
+test('previews a PDF attachment', async () => {
+    render(<Harness initial={[{ id: 12, originalName: 'a.pdf', contentType: 'application/pdf', category: 'INVOICE' }]} />);
 
-    const field = screen.getByLabelText('票号');
-    fireEvent.change(field, { target: { value: 'A1' } });
-    fireEvent.blur(field);
+    fireEvent.click(screen.getByRole('button', { name: '预览' }));
 
-    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
-    expect((screen.getByLabelText('票号') as HTMLInputElement).disabled).toBe(true);
-    await act(async () => { finish?.({ id: 12, originalName: 'a.png', invoiceKey: 'A1' }); });
-    expect(onBusyChange).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect(document.querySelector('iframe')).toBeTruthy());
+    expect(document.querySelector('iframe')?.getAttribute('src')).toBe('/api/attachments/12/preview');
 });
 
-test('does not offer an invoice field for purchase attachments', () => {
-    render(<Harness initial={[{ id: 12, originalName: 'a.png', invoiceKey: 'ABC123' }]} />);
-    expect(screen.queryByLabelText('票号')).toBeNull();
+test('offers only other materials for purchase attachments', async () => {
+    const user = userEvent.setup();
+    render(<Harness kind="PURCHASE" initial={[{ id: 12, originalName: 'a.pdf', contentType: 'application/pdf' }]} />);
+
+    await user.click(screen.getByRole('combobox', { name: 'a.pdf的类型' }));
+
+    expect(await screen.findByTitle('其他材料')).toBeTruthy();
+    expect(screen.queryByTitle('发票')).toBeNull();
+    expect(screen.queryByTitle('付款记录')).toBeNull();
 });
 
 test('removes an attachment from the draft', () => {

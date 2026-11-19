@@ -2,16 +2,19 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.jianheng.emp.approval.WorkflowMapper">
     <sql id="summary">
-        SELECT d.id, d.kind, d.status, r.title, COALESCE(e.name, a.username) AS applicant, e.avatar_key AS applicant_avatar_key,
-               r.department_name, r.amount, d.created_at, d.updated_at, COALESCE(ue.name, ua.username) AS operator,
+        SELECT d.id, d.document_no, d.kind, d.status, r.title, COALESCE(e.name, a.username) AS applicant, e.id AS applicant_employee_id, e.avatar_key AS applicant_avatar_key,
+               r.department_name, r.amount, d.created_at, d.updated_at, COALESCE(ue.name, ua.username) AS operator, ue.id AS operator_employee_id, ue.avatar_key AS operator_avatar_key,
                r.submitted_at,
-               t.id AS task_id, COALESCE(te.name, ta.username) AS assignee, te.avatar_key AS assignee_avatar_key,
-               t.due_at, p.paid_on, p.reference
+               t.id AS task_id,
+               COALESCE(te.name, ta.username) AS assignee, te.id AS assignee_employee_id, te.avatar_key AS assignee_avatar_key,
+               COALESCE(ae.name, aa.username) AS alternate, ae.id AS alternate_employee_id, ae.avatar_key AS alternate_avatar_key,
+               t.due_at, p.paid_on
         FROM work_document d JOIN document_revision r ON r.id = d.current_revision_id
         JOIN account a ON a.id = d.owner_id LEFT JOIN employee e ON e.id = a.employee_id
         LEFT JOIN account ua ON ua.id = d.updated_by LEFT JOIN employee ue ON ue.id = ua.employee_id
         LEFT JOIN approval_task t ON t.revision_id = r.id AND t.status = 'ACTIVE'
         LEFT JOIN account ta ON ta.id = t.assignee_id LEFT JOIN employee te ON te.id = ta.employee_id
+        LEFT JOIN account aa ON aa.id = t.alternate_id LEFT JOIN employee ae ON ae.id = aa.employee_id
         LEFT JOIN expense_payment p ON p.document_id = d.id
     </sql>
     <select id="summary" resultType="com.jianheng.emp.approval.WorkflowData$Summary">
@@ -21,9 +24,40 @@
         <include refid="summary"/> WHERE d.owner_id = #{owner} ORDER BY d.id DESC
     </select>
     <select id="inbox" resultType="com.jianheng.emp.approval.WorkflowData$Summary">
-        <include refid="summary"/> WHERE t.id IS NOT NULL
-        <if test="!all">AND t.assignee_id = #{account}</if>
-        ORDER BY t.due_at, t.id
+        <include refid="summary"/>
+        WHERE (t.id IS NOT NULL
+        <if test="!all">AND (t.assignee_id = #{account} OR t.alternate_id = #{account})</if>)
+        <if test="payer">OR (d.kind IN ('EXPENSE', 'PURCHASE') AND d.status = 'AWAITING_PAYMENT')</if>
+        ORDER BY d.updated_at DESC, t.id DESC, d.id DESC
+    </select>
+    <select id="inboxCount" resultType="int">
+        SELECT COUNT(*) FROM (
+            <include refid="summary"/>
+            WHERE (t.id IS NOT NULL
+            <if test="!all">AND (t.assignee_id = #{account} OR t.alternate_id = #{account})</if>)
+            <if test="payer">OR (d.kind IN ('EXPENSE', 'PURCHASE') AND d.status = 'AWAITING_PAYMENT')</if>
+        ) inbox
+    </select>
+    <select id="handled" resultType="com.jianheng.emp.approval.WorkflowData$Handled">
+        SELECT e.id, d.id AS document_id, d.document_no, d.kind, d.status, r.title,
+               COALESCE(ea.name, a.username) AS applicant, ea.id AS applicant_employee_id, ea.avatar_key AS applicant_avatar_key,
+               e.action, e.comment, e.occurred_at AS handled_at,
+               d.created_at, d.updated_at,
+               COALESCE(oe.name, oa.username) AS operator, oe.id AS operator_employee_id, oe.avatar_key AS operator_avatar_key
+        FROM approval_event e
+        JOIN document_revision r ON r.id = e.revision_id
+        JOIN work_document d ON d.id = r.document_id
+        JOIN account a ON a.id = d.owner_id
+        LEFT JOIN employee ea ON ea.id = a.employee_id
+        LEFT JOIN account oa ON oa.id = d.updated_by
+        LEFT JOIN employee oe ON oe.id = oa.employee_id
+        WHERE e.actor_id = #{account} AND e.action IN ('APPROVE', 'RETURN')
+          AND e.id = (SELECT MAX(e2.id)
+                      FROM approval_event e2
+                      JOIN document_revision r2 ON r2.id = e2.revision_id
+                      WHERE r2.document_id = d.id AND e2.actor_id = #{account}
+                        AND e2.action IN ('APPROVE', 'RETURN'))
+        ORDER BY e.occurred_at DESC, e.id DESC
     </select>
     <select id="ledger" resultType="com.jianheng.emp.approval.WorkflowData$Summary">
         <include refid="summary"/> WHERE d.kind = 'EXPENSE' AND r.submitted_at IS NOT NULL

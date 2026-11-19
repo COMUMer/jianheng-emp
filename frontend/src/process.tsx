@@ -1,7 +1,7 @@
 import { CheckOutlined, CloseOutlined, EllipsisOutlined, UserOutlined } from '@ant-design/icons';
 import type { ReactNode } from 'react';
 import { formatDate } from './format';
-import { PersonAvatar } from './people/avatar';
+import { EmployeeCardAvatar } from './people/EmployeeCard';
 import './process.css';
 
 export type ProcessNodeState = 'done' | 'current' | 'waiting' | 'failed';
@@ -11,6 +11,7 @@ export type ProcessNode = {
     title: string;
     state: ProcessNodeState;
     actor?: string;
+    employeeId?: number;
     avatarKey?: string;
     at?: string;
     timeLabel?: string;
@@ -36,7 +37,8 @@ export function ProcessFeed({ nodes, newestFirst = false, markEnds = false }: {
         const badge = node.badge ?? (node.status && node.status.color !== 'default' ? node.status.color : undefined);
         return <li key={node.key} className={`process-node process-node-${node.state}${node.status ? ` process-tone-${node.status.color}` : ''}`}>
             <span className="process-avatar">
-                {node.actor ? <PersonAvatar name={node.actor} avatarKey={node.avatarKey} size={34} /> : <UserOutlined />}
+                {node.actor ? <EmployeeCardAvatar name={node.actor} employeeId={node.employeeId}
+                    avatarKey={node.avatarKey} size={34} /> : <UserOutlined />}
                 {badge && <span className={`process-avatar-badge process-badge-${badge}`}>{stateIcon(node.state)}</span>}
             </span>
             <div className="process-node-body">

@@ -1,4 +1,4 @@
-import { App } from 'antd';
+import { App, Button } from 'antd';
 import { useEffect, useState } from 'react';
 import { api, showError } from '../api';
 import type { Model } from '../api';
@@ -7,6 +7,7 @@ import { useResource } from '../useResource';
 import { AvatarCropModal } from './AvatarCropModal';
 import { departmentPath } from './departments';
 import { EmployeeProfile } from './EmployeeProfile';
+import { PasswordDialog } from './PasswordDialog';
 
 export function MyProfile({ user, onAvatarChanged }: {
     user: Model<'CurrentUser'>;
@@ -18,6 +19,7 @@ export function MyProfile({ user, onAvatarChanged }: {
     const departments = useResource<Model<'Department'>[]>('/people/departments');
     const [uploading, setUploading] = useState(false);
     const [cropImage, setCropImage] = useState<string>();
+    const [changingPassword, setChangingPassword] = useState(false);
     const profile = detail.data?.employee;
 
     useEffect(() => () => { if (cropImage) URL.revokeObjectURL(cropImage); }, [cropImage]);
@@ -43,14 +45,19 @@ export function MyProfile({ user, onAvatarChanged }: {
     }
 
     return <>
-        <PageHeading title="我的档案" description="查看个人资料和人事变动记录。" />
+        <PageHeading title="我的档案" description="查看个人资料、任职经历和人事变动记录。"
+            action={<Button onClick={() => setChangingPassword(true)}>修改密码</Button>} />
         <ResourceState {...detail} retry={detail.reload}>{profile
             ? <div className="my-profile">
-                <EmployeeProfile profile={profile} history={detail.data?.history} admin={false} editable={false} busy={false}
+                <EmployeeProfile profile={profile} history={detail.data?.history}
+                    employments={detail.data?.employments?.map(item => ({ ...item,
+                        departmentPath: departmentPath(departments.data, item.departmentId) }))}
+                    manageAccount={false} editable={false} busy={false}
                     avatarBusy={uploading} onChangeAvatar={chooseAvatar}
                     departmentPath={departmentPath(departments.data, profile.departmentId)} />
             </div>
             : <EmptyState text="未找到员工档案" />}</ResourceState>
+        <PasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
         <AvatarCropModal image={cropImage} busy={uploading} onCancel={() => setCropImage(undefined)} onSave={uploadAvatar} />
     </>;
 }

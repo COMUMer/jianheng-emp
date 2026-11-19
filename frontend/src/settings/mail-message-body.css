@@ -1,0 +1,17 @@
+.mail-message-body {
+    --mail-image-spacing: 12px;
+    display: flow-root;
+    color: #18221d;
+    font: 14px/1.65 Arial, "Microsoft YaHei", sans-serif;
+    overflow-wrap: anywhere;
+}
+
+.mail-message-body p { margin: 0 0 12px; }
+.mail-message-body p:empty::before { content: "\00a0"; }
+.mail-message-body img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 0 var(--mail-image-spacing);
+}
+.mail-message-body img:not([width]) { width: 100%; }

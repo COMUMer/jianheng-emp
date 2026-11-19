@@ -25,7 +25,7 @@ final class EmployeeProfile {
             digits(input.bankCard()), text(input.bankName()), digits(input.cnapsCode()), input.joinedOn());
     }
 
-    static void validate(EmployeeInput input) {
+    static void validateIdentity(EmployeeInput input) {
         required(input.name(), "请输入姓名");
         required(input.phone(), "请输入联系电话");
         if (!PHONE.matcher(input.phone()).matches()) throw new IllegalArgumentException("请输入有效的手机号或座机号");
@@ -42,6 +42,9 @@ final class EmployeeProfile {
         required(input.bankName(), "请输入开户银行名称");
         required(input.cnapsCode(), "请输入联行号");
         if (!CNAPS.matcher(input.cnapsCode()).matches()) throw new IllegalArgumentException("请输入 12 位联行号");
+    }
+
+    static void validateEmployment(EmployeeInput input) {
         if (input.departmentId() <= 0) throw new IllegalArgumentException("请选择部门");
         if (input.positionId() <= 0) throw new IllegalArgumentException("请选择岗位");
         if (input.joinedOn() == null) throw new IllegalArgumentException("请选择入职日期");

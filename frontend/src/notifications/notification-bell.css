@@ -1,0 +1,40 @@
+.account-bar { gap: 10px; }
+.notification-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #3f5548;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+}
+.notification-button:hover, .notification-button[aria-expanded='true'] { background: var(--page); color: var(--ink); }
+.notification-button .ant-badge { display: inline-flex; align-items: center; line-height: 1; }
+.notification-button .ant-badge-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    border-radius: 9px;
+    box-shadow: none;
+}
+.notification-icon { display: block; width: 28px; height: 28px; }
+.notification-panel { width: 340px; max-width: calc(100vw - 32px); }
+.notification-heading { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 2px 12px; border-bottom: 1px solid var(--line); }
+.notification-heading strong { font-size: 15px; }
+.notification-heading span { color: var(--quiet); font-size: 12px; }
+.notification-panel .notice-list { max-height: 330px; overflow-y: auto; margin: 0 -8px; padding: 4px 0; }
+.notification-panel .notice-list li { border-top: 0; }
+.notification-panel .notice-item { padding: 10px; border-radius: 7px; }
+.notification-panel .notice-item:hover { background: var(--page); }
+.notification-panel .notice-copy strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notification-panel .notice-copy small { font-size: 11px; }
+.notification-empty { margin: 18px 0; color: var(--quiet); font-size: 13px; text-align: center; }
+.notification-all { margin-top: 6px; }

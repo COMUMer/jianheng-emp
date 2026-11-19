@@ -79,7 +79,12 @@
 .process-node-head strong { font-weight: 600; }
 .process-node-time { margin-left: auto; color: var(--quiet); font-size: 12px; white-space: nowrap; }
 .process-node-meta { margin-top: 4px; color: var(--quiet); font-size: 12px; }
+.process-approvers { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.process-approver { display: inline-flex; align-items: center; gap: 4px; }
+.process-approver-divider { color: var(--quiet); }
 .process-node-note { margin-top: 4px; white-space: pre-line; overflow-wrap: anywhere; }
+.process-note-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.process-note-time { flex: none; color: var(--quiet); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .process-status { font-size: 12px; font-weight: 600; }
 .process-status-success { color: var(--brand); }
@@ -99,5 +104,4 @@
 
 .process-mark-quiet { background: var(--page); color: var(--quiet); }
 
-.process-heading { margin: 18px 0 10px; color: var(--quiet); font-size: 13px; font-weight: 600; }
-.process-block:first-of-type .process-heading { margin-top: 0; }
+.process-heading { margin: 13px 0 10px; color: var(--quiet); font-size: 13px; font-weight: 600; }

@@ -48,7 +48,7 @@ class EmployeeAvatarServiceTest {
         var image = ImageIO.read(stored.toFile());
         assertEquals(256, image.getWidth());
         assertEquals(256, image.getHeight());
-        verify(mapper).setAvatar(3L, view.avatarKey(), 7L);
+        verify(mapper).setAvatar(3L, view.avatarKey());
     }
 
     @Test
@@ -81,6 +81,6 @@ class EmployeeAvatarServiceTest {
     private static PeopleMapper.Employee employee(long id, String avatarKey) {
         return new PeopleMapper.Employee(id, "xianghongrui", "向鸿锐", 1, 1, "13800138000", "xiang@example.com",
             "110105199001011232", "深圳市南山区", "张三", "13900139000", "6222020200112233445",
-            "招商银行", "308584000013", avatarKey, LocalDate.of(2026, 1, 1), null, "见衡", "董事", null, null, null);
+            "招商银行", "308584000013", avatarKey, LocalDate.of(2026, 1, 1), null, "见衡", "董事", null, null, null, null);
     }
 }

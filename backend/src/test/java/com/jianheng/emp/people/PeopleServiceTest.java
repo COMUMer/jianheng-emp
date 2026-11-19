@@ -3,9 +3,11 @@ package com.jianheng.emp.people;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -20,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.web.server.ResponseStatusException;
 
 class PeopleServiceTest {
     private final PeopleMapper mapper = mock(PeopleMapper.class);
@@ -29,70 +32,268 @@ class PeopleServiceTest {
     private final CurrentUser actor = new CurrentUser(7, "hr", null, null, null, null, List.of(Role.HR));
 
     @Test
-    void createsAnEmployeeWithNormalizedProfileFields() {
+    void createsAnEmployeeWithIdentityAndFirstEmployment() {
         var input = validInput(" +86 138 0013 8000 ", "11010519491231002x");
-        var created = employee(1, "testuser");
-        mockCreateDependencies();
+        var created = employee(1, "testuser", null);
+        mockIdentityDependencies();
         when(mapper.misSequence("testuser")).thenReturn(1);
-        when(mapper.employeeByMis("testuser")).thenReturn(created);
+        when(mapper.employeeIdByMis("testuser")).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(created);
 
         assertSame(created, service.saveEmployee(actor, null, input));
 
         var saved = ArgumentCaptor.forClass(PeopleService.EmployeeInput.class);
+        var employment = ArgumentCaptor.forClass(PeopleService.EmploymentInput.class);
         verify(mapper).bumpMisSequence("testuser");
         verify(mapper).createEmployee(eq("testuser"), saved.capture(), eq(7L));
+        verify(mapper).createEmployment(eq(1L), employment.capture(), isNull(), eq(7L));
         assertEquals("13800138000", saved.getValue().phone());
         assertEquals("11010519491231002X", saved.getValue().idCard());
-        assertEquals("6222020200112233445", saved.getValue().bankCard());
-        assertEquals("308584000013", saved.getValue().cnapsCode());
-        verify(audit).record(actor.id(), "EMPLOYEE_CREATE", 1L, "入职建档");
+        assertEquals(LocalDate.of(2020, 1, 1), employment.getValue().joinedOn());
+        assertEquals(1L, employment.getValue().departmentId());
+        verify(audit).record(7L, "EMPLOYEE_CREATE", 1L, "入职建档");
+    }
+
+    @Test
+    void fillsSixMonthsOfEmploymentFlow() {
+        when(mapper.employmentFlow(LocalDate.of(2026, 6, 1)))
+            .thenReturn(List.of(new PeopleMapper.EmploymentFlowCount("2026-08", 2, 1)));
+
+        var rows = service.employmentFlow(LocalDate.of(2026, 6, 1));
+
+        assertEquals(6, rows.size());
+        assertEquals(new PeopleService.EmploymentFlow("2026-06", 0, 0), rows.getFirst());
+        assertEquals(new PeopleService.EmploymentFlow("2026-08", 2, 1), rows.get(2));
+        assertEquals(new PeopleService.EmploymentFlow("2026-11", 0, 0), rows.getLast());
+    }
+
+    @Test
+    void preventsDeactivatingAStaffedOrParentDepartment() {
+        var department = department(1, "研发部", null, true);
+        when(mapper.department(1L)).thenReturn(department);
+        when(mapper.currentDepartmentEmployments(1L)).thenReturn(1);
+
+        var error = assertThrows(IllegalArgumentException.class, () -> service.setDepartmentActive(actor, 1L, false));
+        assertEquals("部门还有在职员工，不能停用", error.getMessage());
+
+        when(mapper.currentDepartmentEmployments(1L)).thenReturn(0);
+        when(mapper.childDepartments(1L)).thenReturn(1);
+        var childError = assertThrows(IllegalArgumentException.class, () -> service.setDepartmentActive(actor, 1L, false));
+        assertEquals("请先处理下级部门", childError.getMessage());
+        verify(mapper, never()).setDepartmentActive(anyLong(), eq(false), anyLong());
+    }
+
+    @Test
+    void deletesOnlyAnUnusedInactiveDepartment() {
+        var inactive = department(1, "研发部", null, false);
+        when(mapper.department(1L)).thenReturn(inactive, department(1, "研发部", null, true));
+        when(mapper.childDepartments(1L)).thenReturn(0);
+        when(mapper.departmentEmployments(1L)).thenReturn(0);
+        when(mapper.departmentDocuments(1L)).thenReturn(0);
+
+        service.deleteDepartment(actor, 1L);
+
+        verify(mapper).deleteDepartment(1L);
+        verify(audit).record(7L, "DEPARTMENT_DELETE", 1L, "研发部");
+        var error = assertThrows(IllegalArgumentException.class, () -> service.deleteDepartment(actor, 1L));
+        assertEquals("请先停用部门", error.getMessage());
+    }
+
+    @Test
+    void protectsPositionsWithEmploymentHistoryFromDeletion() {
+        when(mapper.position(1L)).thenReturn(position(1, "工程师", false));
+        when(mapper.positionEmployments(1L)).thenReturn(2);
+
+        var error = assertThrows(IllegalArgumentException.class, () -> service.deletePosition(actor, 1L));
+        assertEquals("岗位存在任职记录，不能删除", error.getMessage());
+        verify(mapper, never()).deletePosition(1L);
+    }
+
+    @Test
+    void savesPositionNameAndDescription() {
+        service.savePosition(actor, null, new PeopleService.PositionInput(" 工程师 ", " 负责研发交付 "));
+
+        var saved = ArgumentCaptor.forClass(PeopleMapper.Position.class);
+        verify(mapper).createPosition(saved.capture(), eq(7L));
+        assertEquals("工程师", saved.getValue().name());
+        assertEquals("负责研发交付", saved.getValue().description());
     }
 
     @Test
     void numbersTheMisWhenThePinyinIsAlreadyTaken() {
-        var created = employee(2, "testuser3");
-        mockCreateDependencies();
+        mockIdentityDependencies();
         when(mapper.misSequence("testuser")).thenReturn(3);
-        when(mapper.employeeByMis("testuser3")).thenReturn(created);
+        when(mapper.employeeIdByMis("testuser3")).thenReturn(2L);
+        when(mapper.employee(2L)).thenReturn(employee(2, "testuser3", null));
 
-        assertSame(created, service.saveEmployee(actor, null, validInput()));
+        service.saveEmployee(actor, null, validInput());
 
         verify(mapper).createEmployee(eq("testuser3"), any(), eq(7L));
     }
 
     @Test
-    void rejectsADuplicateIdCardWhenCreating() {
-        when(mapper.department(1L)).thenReturn(new PeopleMapper.Department(1, "研发部", null, null, null, null, null));
-        when(mapper.position(1L)).thenReturn(new PeopleMapper.Position(1, "工程师", null, null, null));
+    void returnsTheExistingIdentityWhenTheIdCardIsDuplicated() {
+        mockIdentityDependencies();
         when(mapper.employeeByIdCard("11010519491231002X", 0L)).thenReturn(9L);
+        when(mapper.employee(9L)).thenReturn(employee(9, "testuser", LocalDate.of(2026, 11, 15)));
 
-        var error = assertThrows(IllegalArgumentException.class, () -> service.saveEmployee(actor, null, validInput()));
+        var error = assertThrows(EmployeeConflict.class, () -> service.saveEmployee(actor, null, validInput()));
 
-        assertEquals("身份证号已存在", error.getMessage());
+        assertEquals(9L, error.employeeId());
+        assertEquals("testuser", error.employeeName());
+        assertEquals(LocalDate.of(2026, 11, 15), error.departedOn());
+        assertTrue(error.getMessage().contains("重新入职"));
         verify(mapper, never()).createEmployee(any(), any(), anyLong());
     }
 
     @Test
-    void rejectsADuplicateIdCardWhenUpdating() {
-        var before = employee(1, "testuser");
-        when(mapper.department(1L)).thenReturn(new PeopleMapper.Department(1, "研发部", null, null, null, null, null));
-        when(mapper.position(1L)).thenReturn(new PeopleMapper.Position(1, "工程师", null, null, null));
+    void updatesIdentityOnlyOnTheCurrentEmployment() {
+        var before = employee(1, "testuser", null);
+        when(mapper.department(1L)).thenReturn(department(1, "研发部"));
+        when(mapper.position(1L)).thenReturn(position(1, "工程师"));
         when(mapper.lockEmployee(1L)).thenReturn(1L);
         when(mapper.employee(1L)).thenReturn(before);
-        when(mapper.employeeByIdCard("11010519491231002X", 1L)).thenReturn(9L);
+        when(mapper.currentEmployment(1L)).thenReturn(employment(3, LocalDate.of(2020, 1, 1), null));
+        when(mapper.employeeByIdCard("11010519491231002X", 1L)).thenReturn(null);
+
+        service.saveEmployee(actor, 1L, validInput());
+
+        verify(mapper).updateEmployee(eq(1L), any(), eq(7L));
+        verify(mapper).updateEmployment(eq(3L), any(), eq(7L));
+        verify(audit).record(7L, "EMPLOYEE_UPDATE", 1L, "更新档案");
+    }
+
+    @Test
+    void recordsTheFullDepartmentPathWhenTheEmploymentChanges() {
+        var before = employee(1, "testuser", null, 2, "总办");
+        var after = employee(1, "testuser", null, 3, "研发业务部");
+        when(mapper.department(3L)).thenReturn(department(3, "研发业务部", 2L));
+        when(mapper.position(1L)).thenReturn(position(1, "工程师"));
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(before, after);
+        when(mapper.currentEmployment(1L)).thenReturn(employment(3, LocalDate.of(2020, 1, 1), null));
+        when(mapper.employeeByIdCard("11010519491231002X", 1L)).thenReturn(null);
+        when(mapper.departments()).thenReturn(List.of(
+            department(1, "见衡", null), department(2, "总办", 1L), department(3, "研发业务部", 2L)));
+
+        service.saveEmployee(actor, 1L, validInput(3));
+
+        verify(audit).record(7L, "EMPLOYEE_UPDATE", 1L,
+            "见衡/总办（工程师） → 见衡/总办/研发业务部（工程师）");
+    }
+
+    @Test
+    void rejectsProfileUpdatesOnceTheEmploymentIsClosed() {
+        when(mapper.department(1L)).thenReturn(department(1, "研发部"));
+        when(mapper.position(1L)).thenReturn(position(1, "工程师"));
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(employee(1, "testuser", LocalDate.of(2026, 11, 15)));
+        when(mapper.currentEmployment(1L)).thenReturn(null);
 
         var error = assertThrows(IllegalArgumentException.class, () -> service.saveEmployee(actor, 1L, validInput()));
 
-        assertEquals("身份证号已存在", error.getMessage());
+        assertTrue(error.getMessage().contains("重新入职"));
         verify(mapper, never()).updateEmployee(anyLong(), any(), anyLong());
     }
 
     @Test
+    void rehiresADepartedEmployeeWithANewEmploymentPeriod() {
+        var departed = employee(1, "testuser", LocalDate.of(2026, 11, 15));
+        var next = employee(1, "testuser", null);
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(departed, next);
+        when(mapper.employments(1L)).thenReturn(List.of(employment(3, LocalDate.of(2020, 1, 1), LocalDate.of(2026, 11, 15))));
+        when(mapper.department(2L)).thenReturn(department(2, "产品部"));
+        when(mapper.position(3L)).thenReturn(position(3, "产品经理"));
+        when(mapper.departments()).thenReturn(List.of(department(2, "产品部")));
+
+        assertSame(next, service.rehire(actor, 1L, rehire(LocalDate.of(2026, 12, 1), 2, 3, null)));
+
+        var interval = ArgumentCaptor.forClass(PeopleService.EmploymentInput.class);
+        verify(mapper).createEmployment(eq(1L), interval.capture(), isNull(), eq(7L));
+        assertEquals(LocalDate.of(2026, 12, 1), interval.getValue().joinedOn());
+        assertEquals(2L, interval.getValue().departmentId());
+        assertEquals(3L, interval.getValue().positionId());
+        verify(audit).record(7L, "EMPLOYEE_REHIRE", 1L, "2026-12-01 · 产品部（产品经理）");
+    }
+
+    @Test
+    void rejectsRehiringAnEmployeeWhoIsStillActive() {
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(employee(1, "testuser", null));
+        when(mapper.employments(1L)).thenReturn(List.of(employment(3, LocalDate.of(2026, 12, 1), null)));
+
+        var error = assertThrows(ResponseStatusException.class,
+            () -> service.rehire(actor, 1L, rehire(LocalDate.of(2027, 1, 1), 2, 3, null)));
+
+        assertEquals(409, error.getStatusCode().value());
+        verify(mapper, never()).createEmployment(anyLong(), any(), any(), anyLong());
+    }
+
+    @Test
+    void rejectsARehireDateThatOverlapsThePreviousEmployment() {
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(employee(1, "testuser", LocalDate.of(2026, 11, 15)));
+        when(mapper.employments(1L)).thenReturn(List.of(employment(3, LocalDate.of(2020, 1, 1), LocalDate.of(2026, 11, 15))));
+
+        var error = assertThrows(IllegalArgumentException.class,
+            () -> service.rehire(actor, 1L, rehire(LocalDate.of(2026, 11, 15), 2, 3, null)));
+
+        assertTrue(error.getMessage().contains("晚于上次离职"));
+        verify(mapper, never()).createEmployment(anyLong(), any(), any(), anyLong());
+    }
+
+    @Test
+    void rehiresWithAccountActivationWithoutChangingThePassword() {
+        var departed = employee(1, "testuser", LocalDate.of(2026, 11, 15));
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(departed, employee(1, "testuser", null));
+        when(mapper.employments(1L)).thenReturn(List.of(employment(3, LocalDate.of(2020, 1, 1), LocalDate.of(2026, 11, 15))));
+        when(mapper.department(2L)).thenReturn(department(2, "产品部"));
+        when(mapper.position(3L)).thenReturn(position(3, "产品经理"));
+        when(mapper.departments()).thenReturn(List.of(department(2, "产品部")));
+        var account = new AccountService.AccountInput(Set.of(Role.EMPLOYEE), true);
+
+        service.rehire(actor, 1L, rehire(LocalDate.of(2026, 12, 1), 2, 3, account));
+
+        verify(accounts).updateEmployeeAccount(actor, 1L, "testuser", account);
+        verify(audit).record(7L, "EMPLOYEE_REHIRE", 1L, "2026-12-01 · 产品部（产品经理）");
+    }
+
+    @Test
+    void closesTheCurrentEmploymentOnDeparture() {
+        when(mapper.lockDepartments()).thenReturn(List.of(1L));
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.currentEmployment(1L)).thenReturn(employment(3, LocalDate.of(2020, 1, 1), null));
+
+        service.depart(actor, 1L, LocalDate.of(2026, 11, 15));
+
+        verify(mapper).closeEmployment(3L, LocalDate.of(2026, 11, 15), 7L);
+        verify(mapper).removeManager(1L);
+        verify(accounts).disableEmployee(actor, 1L);
+        verify(audit).record(7L, "EMPLOYEE_DEPART", 1L, "2026-11-15");
+    }
+
+    @Test
+    void rejectsDepartureWhenThereIsNoOpenEmployment() {
+        when(mapper.lockDepartments()).thenReturn(List.of(1L));
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.currentEmployment(1L)).thenReturn(null);
+
+        var error = assertThrows(IllegalArgumentException.class,
+            () -> service.depart(actor, 1L, LocalDate.of(2026, 11, 15)));
+
+        assertTrue(error.getMessage().contains("已离职"));
+        verify(mapper, never()).closeEmployment(anyLong(), any(), anyLong());
+    }
+
+    @Test
     void usesTheEmployeeMisAsTheLoginNameWhenSavingTheAccount() {
-        var input = new AccountService.AccountInput("password123", Set.of(Role.EMPLOYEE), true);
+        var input = new AccountService.AccountInput(Set.of(Role.EMPLOYEE), true);
         var view = new AccountService.AccountView(9, true, List.of(Role.EMPLOYEE), null, null, null);
         when(mapper.lockEmployee(1L)).thenReturn(1L);
-        when(mapper.employee(1L)).thenReturn(employee(1, "testuser"));
+        when(mapper.employee(1L)).thenReturn(employee(1, "testuser", null));
+        when(mapper.currentEmployment(1L)).thenReturn(employment(3, LocalDate.of(2020, 1, 1), null));
         when(accounts.updateEmployeeAccount(actor, 1L, "testuser", input)).thenReturn(view);
 
         assertSame(view, service.updateAccount(actor, 1L, input));
@@ -100,10 +301,52 @@ class PeopleServiceTest {
         verify(accounts).updateEmployeeAccount(actor, 1L, "testuser", input);
     }
 
-    private void mockCreateDependencies() {
-        when(mapper.department(1L)).thenReturn(new PeopleMapper.Department(1, "研发部", null, null, null, null, null));
-        when(mapper.position(1L)).thenReturn(new PeopleMapper.Position(1, "工程师", null, null, null));
+    @Test
+    void rejectsAccountChangesForADepartedEmployee() {
+        when(mapper.lockEmployee(1L)).thenReturn(1L);
+        when(mapper.employee(1L)).thenReturn(employee(1, "testuser", LocalDate.of(2026, 11, 15)));
+        when(mapper.currentEmployment(1L)).thenReturn(null);
+
+        var error = assertThrows(IllegalArgumentException.class,
+            () -> service.updateAccount(actor, 1L, new AccountService.AccountInput(Set.of(Role.EMPLOYEE), true)));
+
+        assertTrue(error.getMessage().contains("离职"));
+        verify(accounts, never()).updateEmployeeAccount(any(), anyLong(), any(), any());
+    }
+
+    private void mockIdentityDependencies() {
+        when(mapper.department(1L)).thenReturn(department(1, "研发部"));
+        when(mapper.position(1L)).thenReturn(position(1, "工程师"));
         when(mapper.employeeByIdCard("11010519491231002X", 0L)).thenReturn(null);
+    }
+
+    private static PeopleMapper.Department department(long id, String name) {
+        return department(id, name, null);
+    }
+
+    private static PeopleMapper.Department department(long id, String name, Long parentId) {
+        return department(id, name, parentId, true);
+    }
+
+    private static PeopleMapper.Department department(long id, String name, Long parentId, boolean active) {
+        return new PeopleMapper.Department(id, name, parentId, null, active, null, null, null);
+    }
+
+    private static PeopleMapper.Position position(long id, String name) {
+        return position(id, name, true);
+    }
+
+    private static PeopleMapper.Position position(long id, String name, boolean active) {
+        return new PeopleMapper.Position(id, name, null, active, null, null, null);
+    }
+
+    private static PeopleService.RehireInput rehire(LocalDate joinedOn, long departmentId, long positionId,
+                                                    AccountService.AccountInput account) {
+        return new PeopleService.RehireInput(joinedOn, departmentId, positionId, account);
+    }
+
+    private static PeopleMapper.Employment employment(long id, LocalDate joinedOn, LocalDate departedOn) {
+        return new PeopleMapper.Employment(id, 1, "研发部", 1, "工程师", joinedOn, departedOn);
     }
 
     private static PeopleService.EmployeeInput validInput() {
@@ -116,9 +359,26 @@ class PeopleServiceTest {
             LocalDate.of(2020, 1, 1));
     }
 
-    private static PeopleMapper.Employee employee(long id, String mis) {
+    private static PeopleService.EmployeeInput validInput(long departmentId) {
+        var base = validInput();
+        return new PeopleService.EmployeeInput(base.name(), departmentId, base.positionId(), base.phone(), base.email(),
+            base.idCard(), base.address(), base.emergencyContact(), base.emergencyPhone(), base.bankCard(),
+            base.bankName(), base.cnapsCode(), base.joinedOn());
+    }
+
+    private static PeopleMapper.Employee employee(long id, String mis, LocalDate departedOn) {
         return new PeopleMapper.Employee(id, mis, "testuser", 1, 1, "13800138000", "test@example.com",
             "11010519491231002X", "深圳市南山区", "李四", "13900139000", "6222020200112233445",
-            "招商银行", "308584000013", null, LocalDate.of(2020, 1, 1), null, "研发部", "工程师", null, null, null);
+            "招商银行", "308584000013", null, departedOn == null ? LocalDate.of(2026, 12, 1) : LocalDate.of(2020, 1, 1),
+            departedOn, "研发部", "工程师", null, null, null, null);
+    }
+
+    private static PeopleMapper.Employee employee(long id, String mis, LocalDate departedOn, long departmentId,
+                                                  String departmentName) {
+        var base = employee(id, mis, departedOn);
+        return new PeopleMapper.Employee(base.id(), base.mis(), base.name(), departmentId, base.positionId(),
+            base.phone(), base.email(), base.idCard(), base.address(), base.emergencyContact(), base.emergencyPhone(),
+            base.bankCard(), base.bankName(), base.cnapsCode(), base.avatarKey(), base.joinedOn(), base.departedOn(),
+            departmentName, base.positionName(), base.createdAt(), base.updatedAt(), base.operator(), base.accountActive());
     }
 }

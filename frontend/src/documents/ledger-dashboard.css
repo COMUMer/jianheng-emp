@@ -1,0 +1,40 @@
+.ledger-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.ledger-panel {
+    min-width: 0;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+}
+.ledger-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ledger-panel-head h3 { font-size: 15px; }
+.ledger-panel-sub { margin-top: 3px; color: var(--quiet); font-size: 12px; }
+.ledger-panel-head .ant-select { flex: none; }
+.ledger-period-select { min-width: 112px; }
+.ledger-dashboard-side { display: grid; gap: 12px; min-width: 0; }
+.ledger-dashboard-side .ledger-panel { display: flex; flex-direction: column; }
+.ledger-trend-chart { height: 300px; margin-top: 10px; }
+.ledger-donut-groups { display: grid; flex: 1; align-content: center; gap: 14px; margin-top: 12px; }
+.ledger-donut-group { min-width: 0; }
+.ledger-donut-title { margin: 0 0 6px; color: var(--quiet); font-size: 12px; font-weight: 600; }
+.ledger-status-body { display: flex; align-items: center; gap: 16px; }
+.ledger-donut-chart { flex: none; width: 132px; height: 132px; }
+.ledger-status-legend { display: grid; flex: 1; gap: 10px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.ledger-status-legend li { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; font-size: 14px; }
+.ledger-status-dot { width: 9px; height: 9px; border-radius: 50%; }
+.ledger-status-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ledger-status-legend strong { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ledger-status-legend small { width: 38px; color: var(--quiet); font-size: 13px; text-align: end; font-variant-numeric: tabular-nums; }
+.ledger-status-empty { display: block !important; color: var(--quiet); font-size: 13px; }
+@media (max-width: 1100px) {
+    .ledger-dashboard { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+    .ledger-trend-chart { height: 240px; }
+    .ledger-status-body { align-items: flex-start; }
+}

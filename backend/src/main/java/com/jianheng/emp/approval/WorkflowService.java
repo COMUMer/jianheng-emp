@@ -11,8 +11,8 @@ import com.jianheng.emp.web.AuditMapper;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,12 +24,15 @@ class WorkflowService {
     private final PeopleMapper people;
     private final AccountMapper accounts;
     private final AuditMapper audit;
+    private final WorkflowNotifier notifier;
 
-    WorkflowService(WorkflowMapper mapper, PeopleMapper people, AccountMapper accounts, AuditMapper audit) {
+    WorkflowService(WorkflowMapper mapper, PeopleMapper people, AccountMapper accounts, AuditMapper audit,
+                    WorkflowNotifier notifier) {
         this.mapper = mapper;
         this.people = people;
         this.accounts = accounts;
         this.audit = audit;
+        this.notifier = notifier;
     }
 
     @Transactional
@@ -45,7 +48,7 @@ class WorkflowService {
         if (total != null && total.signum() > 0) money(total);
         Document document;
         if (id == null) {
-            mapper.createDocument(draft.kind(), actor.id());
+            mapper.createDocument(draft.kind(), actor.id(), nextDocumentNo(draft.kind()));
             document = mapper.lockDocument(mapper.insertedId());
         } else {
             document = lock(id);
@@ -54,7 +57,7 @@ class WorkflowService {
             requireEditable(document);
         }
         var clean = new Draft(draft.kind(), draft.title().strip(), text(draft.reason()), draft.leaveType(), draft.startsAt(),
-            draft.endsAt(), draft.destination(), draft.amount(), lines, fileIds);
+            draft.endsAt(), text(draft.origin()), draft.destination(), draft.amount(), lines, fileIds);
         long revision;
         if (document.currentRevisionId() == null || document.status() == Status.RETURNED) {
             mapper.createRevision(document.id(), clean, total);
@@ -97,32 +100,20 @@ class WorkflowService {
         if (template == null) throw new IllegalArgumentException("请联系管理员发布该类型的审批规则");
         var nodes = mapper.nodes(template.id()).stream().filter(node -> includesNode(revision.amount(), node.minimum())).toList();
         if (nodes.isEmpty()) throw new IllegalArgumentException("此单据没有匹配的审批节点");
-        if (document.kind() == Kind.EXPENSE) {
-            var keys = new ArrayList<String>();
-            for (var file : mapper.files(revision.id())) {
-                mapper.lockFile(file.id());
-                var invoiceKey = mapper.file(file.id()).invoiceKey();
-                if (invoiceKey != null) keys.add(invoiceKey);
-            }
-            keys.sort(Comparator.naturalOrder());
-            try {
-                for (String key : keys) mapper.reserve(key, id);
-            } catch (DuplicateKeyException error) {
-                throw conflict("同一票号已被报销单占用，请核对原始票据");
-            }
-        }
         int ordinal = 0;
         for (var node : nodes) {
-            Long assignee = node.assignment() == Assignment.MANAGER ? people.managerAccount(employee.departmentId()) : node.accountId();
-            if (!eligible(assignee, actor.id(), node.assignment())) assignee = node.alternateId();
-            if (!eligible(assignee, actor.id(), node.assignment())) throw new IllegalArgumentException("找不到可处理「" + node.label() + "」的审批人");
-            mapper.addTask(revision.id(), ++ordinal, node, assignee);
+            Long primary = node.assignment() == Assignment.MANAGER ? people.managerAccount(employee.departmentId()) : node.accountId();
+            boolean primaryOk = eligible(primary, actor.id(), node.assignment());
+            boolean alternateOk = eligible(node.alternateId(), actor.id(), node.assignment());
+            var pair = approverPair(primaryOk, alternateOk, primary, node.alternateId());
+            if (pair == null) throw new IllegalArgumentException("找不到可处理「" + node.label() + "」的审批人");
+            mapper.addTask(revision.id(), ++ordinal, node, pair[0], pair[1]);
         }
         mapper.freeze(revision.id(), employee.departmentId(), employee.departmentName(), template.id());
         mapper.changeStatus(id, Status.IN_REVIEW);
         mapper.event(revision.id(), null, actor.id(), "SUBMIT", "提交审批");
         mapper.touch(id, actor.id());
-        activateNext(id, revision.id());
+        activateNext(id, revision.id(), actor.id());
         return detail(actor, id);
     }
 
@@ -142,43 +133,98 @@ class WorkflowService {
             }
             var before = accounts.byId(task.assigneeId());
             var after = accounts.byId(input.assigneeId());
-            comment = before.username() + " → " + after.username() + "，" + comment;
+            comment = mapper.displayName(before.id()) + " → " + mapper.displayName(after.id()) + "，" + comment;
             mapper.reassign(taskId, after.id());
-            mapper.notify(after.id(), id, "有一条转派给你的审批待办");
-            mapper.notify(document.ownerId(), id, "你的申请已转派给 " + after.username());
+            String headline = subject(task.revisionId());
+            notifier.notify(after.id(), id, actor.id(), headline + "已转派给你审批");
+            notifier.notify(document.ownerId(), id, actor.id(), headline + "已转派给 " + mapper.displayName(after.id()));
             audit.record(actor.id(), "APPROVAL_TRANSFER", id, comment);
         } else {
-            if (actor.id() != task.assigneeId() || !eligible(actor.id(), document.ownerId(), task.assignment())) throw denied();
+            boolean candidate = actor.id() == task.assigneeId() || Objects.equals(actor.id(), task.alternateId());
+            if (!candidate || !eligible(actor.id(), document.ownerId(), task.assignment())) throw denied();
+            if (comment.isBlank()) throw new IllegalArgumentException(input.action() == Action.RETURN ? "请填写驳回原因" : "请填写审批意见");
             if (input.action() == Action.RETURN) {
-                if (comment.isBlank()) throw new IllegalArgumentException("请填写退回原因");
                 mapper.taskStatus(taskId, TaskStatus.RETURNED);
                 mapper.closeWaiting(task.revisionId());
                 mapper.changeStatus(id, Status.RETURNED);
-                if (document.kind() == Kind.EXPENSE) mapper.release(id);
-                mapper.notify(document.ownerId(), id, "你的申请已退回，请查看原因");
+                notifier.notify(document.ownerId(), id, actor.id(), subject(task.revisionId()) + "已驳回，请查看原因");
             } else {
                 mapper.taskStatus(taskId, TaskStatus.APPROVED);
                 if (mapper.next(task.revisionId()) == null) {
-                    mapper.changeStatus(id, document.kind() == Kind.EXPENSE ? Status.AWAITING_PAYMENT : Status.APPROVED);
-                    mapper.notify(document.ownerId(), id, document.kind() == Kind.EXPENSE ? "报销已通过，等待付款" : "你的申请已通过");
-                } else activateNext(id, task.revisionId());
+                    mapper.changeStatus(id, payable(document.kind()) ? Status.AWAITING_PAYMENT : Status.APPROVED);
+                    String headline = subject(task.revisionId());
+                    notifier.notify(document.ownerId(), id, actor.id(), headline + (payable(document.kind()) ? "已通过，等待付款" : "已通过"));
+                    if (payable(document.kind())) notifyPayers(id, document.ownerId(), actor.id(), headline + "待你登记付款");
+                } else activateNext(id, task.revisionId(), actor.id());
             }
         }
         mapper.event(task.revisionId(), taskId, actor.id(), input.action().name(), comment);
         mapper.touch(id, actor.id());
     }
 
+    /**
+     * 打开付款登记前抢占：同一单据只允许一个付款人在 5 分钟内登记，避免两人同时填写后重复付款。
+     */
+    /** 超期未处理的任务由系统自动驳回，并通知审批人与申请人。 */
+    @Transactional
+    public void returnOverdue(long taskId) {
+        var task = mapper.task(taskId);
+        if (task == null || task.status() != TaskStatus.ACTIVE || task.dueAt() == null
+            || !task.dueAt().isBefore(LocalDateTime.now())) return;
+        var revision = mapper.revision(task.revisionId());
+        if (revision == null) return;
+        var document = lock(revision.documentId());
+        if (document.status() != Status.IN_REVIEW || !Objects.equals(document.currentRevisionId(), task.revisionId())) return;
+        if (mapper.returnOverdueTask(taskId) == 0) return;
+        mapper.closeWaiting(task.revisionId());
+        mapper.changeStatus(document.id(), Status.RETURNED);
+        long system = mapper.systemAccountId();
+        mapper.event(task.revisionId(), taskId, system, Action.RETURN.name(), "审批超期，系统自动驳回");
+        String headline = subject(task.revisionId());
+        notifier.notify(task.assigneeId(), document.id(), system, headline + "审批超期，已自动驳回");
+        if (task.alternateId() != null) notifier.notify(task.alternateId(), document.id(), system, headline + "审批超期，已自动驳回");
+        notifier.notify(document.ownerId(), document.id(), system, headline + "因审批超期被系统驳回，请查看原因");
+    }
+    @Transactional
+    public void claimPayment(CurrentUser actor, long id) {
+        if (!actor.has(Role.PAYER)) throw denied();
+        var document = lock(id);
+        if (!payable(document.kind()) || document.status() != Status.AWAITING_PAYMENT) throw conflict("该单据当前不可登记付款");
+        if (mapper.claimPayment(id, actor.id()) == 0) throw claimedByOther(id);
+    }
+
+    /** 关闭付款弹窗时释放抢占，让其他付款人立即接手。 */
+    @Transactional
+    public void releasePayment(CurrentUser actor, long id) {
+        if (!actor.has(Role.PAYER)) throw denied();
+        mapper.releasePayment(id, actor.id());
+    }
+
     @Transactional
     public void pay(CurrentUser actor, long id, PaymentInput input) {
         if (!actor.has(Role.PAYER)) throw denied();
         var document = lock(id);
-        if (document.kind() != Kind.EXPENSE || document.status() != Status.AWAITING_PAYMENT) throw conflict("该单据当前不可登记付款");
+        if (!payable(document.kind()) || document.status() != Status.AWAITING_PAYMENT) throw conflict("该单据当前不可登记付款");
+        if (mapper.claimPayment(id, actor.id()) == 0) throw claimedByOther(id);
         if (input.paidOn().isAfter(LocalDate.now())) throw new IllegalArgumentException("付款日期不能晚于今天");
-        mapper.addPayment(id, new PaymentInput(input.paidOn(), input.reference().strip()), actor.id());
+        if (input.fileIds() == null || input.fileIds().isEmpty()) throw new IllegalArgumentException("请上传付款附件");
+        mapper.addPayment(id, new PaymentInput(input.paidOn(), input.fileIds()), actor.id());
+        var fileIds = input.fileIds();
+        for (long fileId : fileIds.stream().distinct().sorted().toList()) {
+            mapper.lockFile(fileId);
+            var file = mapper.file(fileId);
+            if (file == null || file.uploadedBy() != actor.id()) throw denied();
+            if (file.category() != FileCategory.PAYMENT) throw new IllegalArgumentException("付款附件必须为付款记录");
+            if (!mapper.documentsForFile(fileId).isEmpty() || !mapper.paymentDocumentsForFile(fileId).isEmpty()) {
+                throw new IllegalArgumentException("附件已被其他记录使用");
+            }
+            mapper.addPaymentFile(id, fileId);
+        }
         mapper.changeStatus(id, Status.PAID);
+        mapper.releasePayment(id, actor.id());
         mapper.touch(id, actor.id());
-        mapper.notify(document.ownerId(), id, "报销已登记付款");
-        audit.record(actor.id(), "PAYMENT_RECORD", id, input.reference().strip());
+        notifier.notify(document.ownerId(), id, actor.id(), subject(document.currentRevisionId()) + "已登记付款");
+        audit.record(actor.id(), "PAYMENT_RECORD", id, "已登记付款");
     }
 
     @Transactional
@@ -217,24 +263,41 @@ class WorkflowService {
         var summary = mapper.summary(id);
         if (!revisions.isEmpty() && revisions.getFirst().revision().id() != document.currentRevisionId()) {
             var snapshot = revisions.getFirst().revision();
-            summary = new Summary(id, document.kind(), Status.RETURNED, snapshot.title(), summary.applicant(), summary.applicantAvatarKey(),
-                snapshot.departmentName(), snapshot.amount(), summary.createdAt(), summary.updatedAt(), summary.operator(),
-                snapshot.submittedAt(), null, null, null, null, null, null);
+            summary = new Summary(id, summary.documentNo(), document.kind(), Status.RETURNED, snapshot.title(), summary.applicant(), summary.applicantEmployeeId(), summary.applicantAvatarKey(),
+                snapshot.departmentName(), snapshot.amount(), summary.createdAt(), summary.updatedAt(), summary.operator(), summary.operatorEmployeeId(), summary.operatorAvatarKey(),
+                snapshot.submittedAt(), null, null, null, null, null, null, null, null, null);
         }
-        return new Detail(summary, document.ownerId(), revisions, mapper.payment(id));
+        var payment = mapper.payment(id);
+        var paymentFiles = payment == null ? List.<Attachment>of() : mapper.paymentFiles(id).stream()
+            .map(WorkflowService::attachment).toList();
+        return new Detail(summary, document.ownerId(), revisions, payment, paymentFiles,
+            document.kind() == Kind.EXPENSE ? mapper.payeeAccount(document.ownerId()) : null);
     }
 
     boolean canRead(CurrentUser actor, Document document) {
         if (document == null) return false;
         if (document.ownerId() == actor.id()) return true;
         return mapper.involved(document.id(), actor.id()) || mapper.hasSubmittedRevision(document.id()) && (
-            actor.has(Role.ADMIN) || document.kind() == Kind.EXPENSE && (actor.has(Role.FINANCE) || actor.has(Role.PAYER)));
+            actor.has(Role.ADMIN) || payable(document.kind()) && (actor.has(Role.FINANCE) || actor.has(Role.PAYER)));
     }
 
     static Attachment attachment(FileRecord file) {
-        return new Attachment(file.id(), file.originalName(), file.digest(), file.invoiceKey());
+        return new Attachment(file.id(), file.originalName(), file.digest(), file.contentType(), file.category());
     }
 
+    /** 业务单号：类型前缀 + 年月 + 当月顺序号，计数器表原子自增，保证并发唯一。 */
+    private String nextDocumentNo(Kind kind) {
+        var period = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
+        mapper.bumpNumber(kind.name(), period);
+        long seq = mapper.lastNumber();
+        String prefix = switch (kind) {
+            case LEAVE -> "QJ";
+            case TRIP -> "CC";
+            case PURCHASE -> "CG";
+            case EXPENSE -> "BX";
+        };
+        return prefix + period + String.format("%04d", seq);
+    }
     private Document lock(long id) {
         var document = mapper.lockDocument(id);
         if (document == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
@@ -246,30 +309,52 @@ class WorkflowService {
         var account = accounts.byId(accountId);
         if (account == null || !account.active() || account.employeeId() == null) return false;
         var employee = people.employee(account.employeeId());
-        return employee != null && employee.departedOn() == null
-            && accounts.roles(accountId).contains(assignment == Assignment.FINANCE ? Role.FINANCE : Role.APPROVER);
+        return employee != null && canApprove(assignment, employee.departedOn(), accounts.roles(accountId));
     }
 
-    private void activateNext(long document, long revision) {
+    private void activateNext(long document, long revision, long actor) {
         var task = mapper.next(revision);
         mapper.activate(task.id(), LocalDateTime.now().plusHours(task.dueHours()));
-        mapper.notify(task.assigneeId(), document, "待处理「" + task.label() + "」");
+        String headline = subject(revision);
+        notifier.notify(task.assigneeId(), document, actor, headline + "待你审批");
+        if (task.alternateId() != null && !Objects.equals(task.alternateId(), task.assigneeId())) {
+            notifier.notify(task.alternateId(), document, actor, headline + "待你审批");
+        }
+    }
+
+    /** 站内消息统一以单据标题开头，不点开也能判断是哪一张单。 */
+    private String subject(long revision) { return "「" + mapper.revision(revision).title() + "」"; }
+
+    /** 进待付款时通知全部在职付款账号：这张单会出现在他们的「我的待办」里。 */
+    private void notifyPayers(long document, long owner, long actor, String message) {
+        for (long payer : accounts.activeIdsWithRole(Role.PAYER)) {
+            if (payer != owner) notifier.notify(payer, document, actor, message);
+        }
     }
 
     private void validateSubmission(Kind kind, Revision revision) {
         if (revision.reason().isBlank()) throw new IllegalArgumentException("请填写申请事由");
+        var files = mapper.files(revision.id());
+        if (files.stream().anyMatch(file -> file.category() == null)) throw new IllegalArgumentException("请为每个附件选择类型");
         switch (kind) {
             case LEAVE, TRIP -> {
-                if (revision.startsAt() == null || revision.endsAt() == null || !revision.endsAt().isAfter(revision.startsAt())) {
+                if (revision.startsAt() == null || revision.endsAt() == null || revision.endsAt().isBefore(revision.startsAt())) {
                     throw new IllegalArgumentException("结束时间要晚于开始时间");
                 }
                 if (kind == Kind.LEAVE && text(revision.leaveType()).isBlank()) throw new IllegalArgumentException("请选择请假类型");
+                if (kind == Kind.TRIP && text(revision.origin()).isBlank()) throw new IllegalArgumentException("请填写出发地点");
                 if (kind == Kind.TRIP && text(revision.destination()).isBlank()) throw new IllegalArgumentException("请填写出差地点");
             }
-            case PURCHASE -> money(revision.amount());
+            case PURCHASE -> {
+                money(revision.amount());
+                requirePurchaseAttachment(files.stream().map(FileRecord::category).toList());
+            }
             case EXPENSE -> {
                 money(revision.amount());
-                if (mapper.files(revision.id()).isEmpty()) throw new IllegalArgumentException("请上传原始票据");
+                requireExpenseAttachments(files.stream().map(FileRecord::category).toList());
+                if (mapper.inactiveCategoryLines(revision.id()) > 0) {
+                    throw new IllegalArgumentException("费用类别已停用，请重新选择");
+                }
             }
         }
     }
@@ -280,5 +365,12 @@ class WorkflowService {
 
     private static String text(String value) { return value == null ? "" : value.strip(); }
     private static ResponseStatusException denied() { return new ResponseStatusException(HttpStatus.FORBIDDEN); }
+    private ResponseStatusException claimedByOther(long id) {
+        var holder = mapper.paymentClaimBy(id);
+        return conflict(holder == null ? "该单据正在被登记付款"
+            : "该单据正由 " + mapper.displayName(holder) + " 登记付款");
+    }
+
+    private static boolean payable(Kind kind) { return kind == Kind.EXPENSE || kind == Kind.PURCHASE; }
     private static ResponseStatusException conflict(String message) { return new ResponseStatusException(HttpStatus.CONFLICT, message); }
 }

@@ -1,0 +1,25 @@
+.notice-list { list-style: none; margin: 0; padding: 0; }
+.notice-list li { border-top: 1px solid var(--line); }
+.notice-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 1px;
+}
+.notice-open {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+}
+.notice-item:hover strong { color: var(--brand); }
+.notice-avatar { position: relative; display: inline-flex; flex: none; }
+.notice-avatar .notice-dot { position: absolute; top: -1px; right: -1px; width: 7px; height: 7px; border: 1px solid var(--surface); border-radius: 50%; background: var(--brand); }
+.notice-copy { display: grid; gap: 4px; min-width: 0; }
+.notice-copy strong { font-size: 14px; font-weight: 500; line-height: 1.5; }
+.notice-copy small { color: var(--quiet); font-size: 12px; }

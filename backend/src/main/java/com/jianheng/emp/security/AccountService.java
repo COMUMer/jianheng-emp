@@ -21,10 +21,15 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AccountService implements UserDetailsService, ApplicationRunner {
-    public record CurrentUser(long id, String username, Long employeeId, String mis, String name, String avatarKey, List<Role> roles) {
+    public record CurrentUser(long id, String username, Long employeeId, String mis, String name, String avatarKey,
+                              List<Role> roles, String positionName) {
+        public CurrentUser(long id, String username, Long employeeId, String mis, String name, String avatarKey,
+                           List<Role> roles) {
+            this(id, username, employeeId, mis, name, avatarKey, roles, null);
+        }
         public boolean has(Role role) { return roles.contains(role); }
     }
-    public record AccountInput(String password, Set<Role> roles, boolean active) {}
+    public record AccountInput(Set<Role> roles, boolean active) {}
     public record AccountView(long id, boolean active, List<Role> roles, java.time.LocalDateTime createdAt,
                               java.time.LocalDateTime updatedAt, String operator) {}
 
@@ -68,7 +73,7 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
         var account = mapper.byUsername(authentication.getName());
         if (account == null || !account.active()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         return new CurrentUser(account.id(), account.username(), account.employeeId(), account.employeeMis(),
-            account.employeeName(), account.employeeAvatarKey(), mapper.roles(account.id()));
+            account.employeeName(), account.employeeAvatarKey(), mapper.roles(account.id()), account.employeePositionName());
     }
 
     public void require(CurrentUser user, Role... roles) {
@@ -89,12 +94,11 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
         if (roles.contains(Role.ADMIN)) throw new IllegalArgumentException("员工账号不可授予系统管理员角色");
         roles.add(Role.EMPLOYEE);
         if (account == null) {
-            validatePassword(input.password());
-            mapper.insert(loginName, passwords.encode(input.password()), employeeId);
+            String idCard = mapper.employeeIdCard(employeeId);
+            if (idCard == null || idCard.length() < 6) throw new IllegalArgumentException("员工身份证号不完整，无法开通账号");
+            String initialPassword = idCard.substring(idCard.length() - 6).toUpperCase(Locale.ROOT);
+            mapper.insert(loginName, passwords.encode(initialPassword), employeeId);
             account = mapper.byEmployee(employeeId);
-        } else if (input.password() != null && !input.password().isBlank()) {
-            validatePassword(input.password());
-            mapper.setPassword(account.id(), passwords.encode(input.password()));
         }
         mapper.clearRoles(account.id());
         for (Role role : roles) mapper.addRole(account.id(), role);
@@ -115,10 +119,16 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
         invalidateAfterCommit(account.username());
     }
 
-    private void invalidateAfterCommit(String username) {
+    private void invalidateAfterCommit(String username) { revokeSessions(username, null); }
+
+    /** 撤销该账号的会话；keepSessionId 非空时保留这一个（本人改密后当前页面不掉线）。 */
+    @Transactional
+    public void revokeSessions(String username, String keepSessionId) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit() {
-                sessions.findByPrincipalName(username).keySet().forEach(sessions::deleteById);
+                sessions.findByPrincipalName(username).keySet().stream()
+                    .filter(sessionId -> !sessionId.equals(keepSessionId))
+                    .forEach(sessions::deleteById);
             }
         });
     }
@@ -130,9 +140,9 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
         validatePassword(password);
     }
 
-    private static void validatePassword(String password) {
-        if (password == null || password.length() < 10 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
-            throw new IllegalArgumentException("密码至少 10 个字符，且 UTF-8 编码不超过 72 字节");
+    static void validatePassword(String password) {
+        if (password == null || password.length() < 6 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
+            throw new IllegalArgumentException("密码至少 6 个字符，且 UTF-8 编码不超过 72 字节");
         }
     }
 }

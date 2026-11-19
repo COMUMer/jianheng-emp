@@ -19,7 +19,11 @@ class EmployeeProfileTest {
     @Test
     void acceptsACompleteProfile() {
         assertTrue(validator.validate(validInput()).isEmpty());
-        assertDoesNotThrow(() -> EmployeeProfile.validate(EmployeeProfile.normalize(validInput())));
+        assertDoesNotThrow(() -> {
+            var clean = EmployeeProfile.normalize(validInput());
+            EmployeeProfile.validateIdentity(clean);
+            EmployeeProfile.validateEmployment(clean);
+        });
     }
 
     @Test
@@ -49,16 +53,27 @@ class EmployeeProfileTest {
             "110105194912310021", "深圳", "李四", "13900139000", "6222020200112233445",
             "招商银行", "308584000013", LocalDate.of(2020, 1, 1));
 
-        var error = assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validate(input));
+        var error = assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validateIdentity(input));
         assertTrue(error.getMessage().contains("校验位"));
     }
 
     @Test
     void rejectsInvalidPhoneBankCardAndCnapsFormats() {
-        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validate(withPhone("12345")));
-        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validate(withBankCard("1234")));
-        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validate(withCnaps("123")));
-        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validate(withEmail("not-an-email")));
+        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validateIdentity(withPhone("12345")));
+        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validateIdentity(withBankCard("1234")));
+        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validateIdentity(withCnaps("123")));
+        assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validateIdentity(withEmail("not-an-email")));
+    }
+
+    @Test
+    void validatesTheEmploymentFieldsSeparatelyFromIdentity() {
+        var input = new EmployeeInput("张三", 0, 0, "13800138000", "zhangsan@example.com",
+            "11010519491231002X", "深圳", "李四", "13900139000", "6222020200112233445",
+            "招商银行", "308584000013", null);
+
+        var error = assertThrows(IllegalArgumentException.class, () -> EmployeeProfile.validateEmployment(input));
+
+        assertEquals("请选择部门", error.getMessage());
     }
 
     @Test

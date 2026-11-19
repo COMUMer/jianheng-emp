@@ -1,5 +1,7 @@
 import { Form, Input, Select } from 'antd';
 import { DateField } from '../dates';
+import { DepartmentPicker } from './DepartmentPicker';
+import type { Department } from './departments';
 
 const phoneRules = [
     { required: true, message: '请输入联系电话' },
@@ -22,28 +24,40 @@ function normalizeDigits(value?: string) {
     return (value ?? '').replace(/[\s-]/g, '');
 }
 
-export type OrganizationOption = { value?: number; label?: string };
+export type OrganizationOption = { value?: number; label?: string; active?: boolean };
 
-export function EmployeeFields({ departments, positions, creating }: {
-    departments?: OrganizationOption[];
+export function EmploymentFields({ departments, positions, minDate, disabled }: {
+    departments?: readonly Department[];
     positions?: OrganizationOption[];
-    creating?: boolean;
+    minDate?: string;
+    disabled?: boolean;
 }) {
     return <>
-        {creating && <p className="form-hint">mis 按姓名的小写拼音自动生成，重名时依次追加 2、3…；mis 同时是登录账号，创建后可在员工档案中开通账号并分配权限。</p>}
+        <Form.Item name="departmentId" label="部门" rules={[{ required: true, message: '请选择部门' }]}>
+            <DepartmentPicker departments={departments?.filter(item => item.active !== false)} ariaLabel="部门"
+                placeholder="请选择部门" disabled={disabled} />
+        </Form.Item>
+        <Form.Item name="positionId" label="岗位" rules={[{ required: true, message: '请选择岗位' }]}>
+            <Select options={positions?.filter(item => item.active !== false)} placeholder="请选择岗位" />
+        </Form.Item>
+        <Form.Item name="joinedOn" label="入职日期" rules={[{ required: true, message: '请选择入职日期' }]}>
+            <DateField className="wide-input" placeholder="请选择入职日期"
+                disabledDate={minDate ? date => !date.isAfter(minDate, 'day') : undefined} />
+        </Form.Item>
+    </>;
+}
+
+export function EmployeeFields({ departments, positions, disabled }: {
+    departments?: readonly Department[];
+    positions?: OrganizationOption[];
+    disabled?: boolean;
+}) {
+    return <>
         <div className="form-grid">
             <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
                 <Input maxLength={100} placeholder="请输入姓名" />
             </Form.Item>
-            <Form.Item name="departmentId" label="部门" rules={[{ required: true, message: '请选择部门' }]}>
-                <Select options={departments} placeholder="请选择部门" />
-            </Form.Item>
-            <Form.Item name="positionId" label="岗位" rules={[{ required: true, message: '请选择岗位' }]}>
-                <Select options={positions} placeholder="请选择岗位" />
-            </Form.Item>
-            <Form.Item name="joinedOn" label="入职日期" rules={[{ required: true, message: '请选择入职日期' }]}>
-                <DateField className="wide-input" placeholder="请选择入职日期" />
-            </Form.Item>
+            <EmploymentFields departments={departments} positions={positions} disabled={disabled} />
         </div>
         <div className="form-section">
             <h3>联系方式</h3>

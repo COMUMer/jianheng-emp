@@ -1,0 +1,8 @@
+.messages-surface { padding-top: 14px; }
+.messages-surface .filter-bar { margin: 0 0 14px; }
+.messages-count { margin-left: auto; color: var(--quiet); font-size: 13px; }
+.messages-surface .notice-item { align-items: center; gap: 10px; padding: 5px 1px; }
+.messages-surface .notice-copy { display: flex; flex: 1; align-items: baseline; gap: 16px; }
+.messages-surface .notice-copy strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.messages-surface .notice-copy small { flex: none; white-space: nowrap; }
+.messages-pager { display: flex; justify-content: flex-end; margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }

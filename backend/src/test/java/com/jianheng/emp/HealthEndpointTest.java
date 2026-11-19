@@ -23,6 +23,7 @@ class HealthEndpointTest {
             var response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             assertEquals(200, response.statusCode());
+            assertEquals("SAMEORIGIN", response.headers().firstValue("X-Frame-Options").orElse(null));
             assertTrue(response.body().contains("\"status\":\"UP\""));
         }
     }

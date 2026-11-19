@@ -1,0 +1,120 @@
+.mail-settings-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    min-height: 24px;
+    margin: 0 0 14px;
+    font-size: 12px;
+}
+.mail-settings-status .ant-tag { margin: 0; }
+.mail-settings-alert { margin-bottom: 16px; }
+.mail-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    min-height: 810px;
+}
+.surface.mail-panel {
+    --mail-panel-inset: 20px;
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    padding: 0;
+}
+.mail-panel-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 52px;
+    padding: 8px var(--mail-panel-inset);
+    font-size: 12px;
+}
+.mail-panel-heading h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.5;
+}
+.mail-compose-envelope {
+    display: grid;
+    gap: 8px;
+    padding: 12px var(--mail-panel-inset);
+    border-top: 1px solid var(--line);
+}
+.mail-compose-envelope .ant-form-item { min-width: 0; margin-bottom: 0; }
+.mail-test-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.mail-test-row .ant-form-item { flex: 1 1 220px; }
+.mail-test-send { flex: none; }
+.mail-test-hint { margin: 0; color: var(--quiet); font-size: 12px; }
+.mail-sender-domain-hint {
+    margin: 0;
+    color: var(--quiet);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.mail-panel-bar {
+    min-width: 0;
+    padding: 8px var(--mail-panel-inset);
+    border-block: 1px solid var(--line);
+    background: var(--page);
+}
+.mail-compose-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: center;
+    gap: 4px 8px;
+}
+.mail-compose-tools { display: flex; flex-wrap: wrap; gap: 2px; }
+.mail-compose-toolbar .ant-btn { padding-inline: 8px; font-size: 13px; }
+.mail-compose-toolbar .ant-btn[aria-pressed='true'] { background: var(--line); }
+.mail-preview-envelope { display: grid; align-content: center; gap: 3px; }
+.mail-preview-subject { margin: 0; font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.mail-preview-meta { margin: 0; color: var(--quiet); font-size: 12px; overflow-wrap: anywhere; }
+.mail-panel-content { min-width: 0; padding: 16px var(--mail-panel-inset); }
+.mail-compose-content, .mail-body-editor { display: flex; flex-direction: column; }
+.mail-body-editor, .mail-body-editor .tiptap { flex: 1; }
+.mail-body-editor .tiptap { min-height: 260px; outline: 0; }
+.mail-body-editor [data-resize-container] { display: flex; margin-bottom: var(--mail-image-spacing); }
+.mail-body-editor [data-resize-wrapper] { position: relative; min-width: 0; max-width: 100%; }
+.mail-body-editor [data-resize-wrapper] img {
+    width: 100%;
+    margin: 0;
+    cursor: pointer;
+}
+.mail-body-editor .ProseMirror-selectednode img { outline: 1px solid var(--brand); }
+.mail-body-editor [data-resize-handle] {
+    display: none;
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    touch-action: none;
+}
+.mail-body-editor .tiptap[contenteditable='true'] .ProseMirror-selectednode [data-resize-handle] {
+    display: grid;
+    place-items: center;
+}
+.mail-body-editor [data-resize-handle]::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--surface);
+    border-radius: 2px;
+    background: var(--brand);
+}
+.mail-body-editor [data-resize-handle='top-left'] { top: 0; left: 0; translate: -50% -50%; cursor: nwse-resize; }
+.mail-body-editor [data-resize-handle='top-right'] { top: 0; right: 0; translate: 50% -50%; cursor: nesw-resize; }
+.mail-body-editor [data-resize-handle='bottom-left'] { bottom: 0; left: 0; translate: -50% 50%; cursor: nesw-resize; }
+.mail-body-editor [data-resize-handle='bottom-right'] { bottom: 0; right: 0; translate: 50% 50%; cursor: nwse-resize; }
+.mail-body-error { margin: 8px 0 0; color: #b42318; }
+.mail-preview-frame { display: block; width: 100%; height: 220px; min-height: 24px; border: 0; }
+@media (max-width: 1050px) {
+    .mail-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; min-height: 0; }
+}
+@media (max-width: 640px) {
+    .surface.mail-panel { --mail-panel-inset: 14px; }
+}

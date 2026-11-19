@@ -24,7 +24,7 @@ class SecurityConfiguration {
             .authorizeHttpRequests(requests -> {
                 if (environment.matchesProfiles("dev")) requests.requestMatchers("/api/openapi").permitAll();
                 requests.requestMatchers(EndpointRequest.to(HealthEndpoint.class)).permitAll()
-                    .requestMatchers("/api/session/csrf", "/api/session/login").permitAll()
+                    .requestMatchers("/api/session/csrf", "/api/session/login", "/api/session/password/**").permitAll()
                     .anyRequest().authenticated();
             })
             .requestCache(AbstractHttpConfigurer::disable)
@@ -33,6 +33,7 @@ class SecurityConfiguration {
                 .failureHandler((request, response, exception) -> response.setStatus(401)))
             .logout(logout -> logout.logoutUrl("/api/session/logout")
                 .logoutSuccessHandler((request, response, authentication) -> response.setStatus(204)))
+            .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
             .exceptionHandling(errors -> errors.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .build();
     }

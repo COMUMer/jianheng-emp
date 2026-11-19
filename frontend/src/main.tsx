@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './styles.css';
 
@@ -18,14 +19,16 @@ const brandTintHover = '#dcebe3';
 
 createRoot(root).render(
     <StrictMode>
-        <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} theme={{ token: { colorPrimary: brand, colorLink: brand,
-            colorPrimaryBg: brandTint, colorPrimaryBgHover: brandTintHover, borderRadius: 7,
-            motion: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-            colorText: '#18221d', colorTextSecondary: '#64726a', colorBorder: '#dce5de',
-            fontFamily: '"Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif' },
-            components: { Table: { cellPaddingBlock: 8, cellPaddingInline: 12 },
-                Select: { optionSelectedColor: brand, multipleItemBg: brandTint } } }}>
-            <AntApp><App /></AntApp>
-        </ConfigProvider>
+        <BrowserRouter>
+            <ConfigProvider locale={zhCN} button={{ autoInsertSpace: false }} theme={{ token: { colorPrimary: brand, colorLink: brand,
+                colorPrimaryBg: brandTint, colorPrimaryBgHover: brandTintHover, borderRadius: 7,
+                motion: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+                colorText: '#18221d', colorTextSecondary: '#64726a', colorBorder: '#dce5de',
+                fontFamily: '"Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif' },
+                components: { Table: { cellPaddingBlock: 8, cellPaddingInline: 12 },
+                    Select: { optionSelectedColor: brand, multipleItemBg: brandTint } } }}>
+                <AntApp><App /></AntApp>
+            </ConfigProvider>
+        </BrowserRouter>
     </StrictMode>,
 );

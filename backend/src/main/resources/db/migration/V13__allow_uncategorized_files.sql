@@ -1,0 +1,2 @@
+ALTER TABLE document_file
+    MODIFY category VARCHAR(16) NULL DEFAULT NULL;

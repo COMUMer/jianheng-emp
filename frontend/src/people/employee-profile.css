@@ -48,8 +48,20 @@
 
 .employee-profile-sidebar { display: grid; gap: var(--profile-gap); min-width: 0; }
 .employee-profile-subheading { margin-bottom: 10px; }
-.account-mis { margin-bottom: 14px; color: var(--quiet); }
-.account-mis strong { color: var(--ink); font-weight: 600; }
+.account-form .ant-form-item { margin-bottom: 10px; }
+.account-enable-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.account-enable-row .account-enable-label { font-size: 14px; }
+
+.employment-history { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.employment-history li { border-top: 1px solid var(--line); padding-top: 12px; }
+.employment-history li:first-child { border-top: 0; padding-top: 0; }
+.employment-history-fields { display: grid; gap: 4px; margin: 0; }
+.employment-history-fields > div { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 6px; }
+.employment-history-fields > .employment-history-position { grid-template-columns: 36px minmax(0, 1fr) auto; align-items: baseline; }
+.employment-history-fields dt { color: var(--quiet); font-size: 12px; }
+.employment-history-fields dd { margin: 0; font-weight: 550; overflow-wrap: anywhere; }
+.employment-history-range { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; color: var(--quiet); font-size: 12px; font-weight: 400; white-space: nowrap; }
+.employment-history-range .ant-tag { margin: 0; }
 
 @media (max-width: 950px) {
     .employee-profile-grid { grid-template-columns: minmax(0, 1fr); }
@@ -86,3 +98,7 @@
     white-space: nowrap;
 }
 
+.password-dialog { padding-top: 4px; }
+.password-dialog .password-form .ant-input-affix-wrapper { height: 44px; align-items: center; }
+.password-dialog .password-form .ant-input-affix-wrapper .ant-input { height: auto; }
+.password-save-button { height: 44px; font-size: 15px; }

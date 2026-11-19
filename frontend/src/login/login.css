@@ -112,7 +112,7 @@
 }
 
 .login-card {
-    --login-control-height: 40px;
+    --login-control-height: 30px;
     --login-input-font-size: 12px;
     justify-self: start;
     width: 100%;
@@ -123,6 +123,8 @@
     background: var(--surface);
     box-shadow: 0 22px 51px -24px rgba(15, 59, 46, .24), 0 2px 6px rgba(15, 59, 46, .04);
 }
+.login-card h1 + .login-form { margin-top: 18px; }
+
 .login-card h1 {
     margin: 0;
     font-size: 21px;
@@ -141,9 +143,9 @@
 .login-card .ant-input-affix-wrapper {
     height: var(--login-control-height);
     padding: 0 13px;
-    border-color: #dfe7e1;
+    border-color: #d9e2dc;
     border-radius: 7px;
-    background: #f7faf7;
+    background: #fff;
     font-size: var(--login-input-font-size);
     box-shadow: none;
 }
@@ -155,9 +157,9 @@
     background: transparent;
     box-shadow: none;
 }
-.login-card .ant-input::placeholder { color: #7d8b83; }
+.login-card .ant-input::placeholder { color: #8a948d; }
 .login-card .ant-input:hover,
-.login-card .ant-input-affix-wrapper:hover { border-color: #c8d8cd; background: #f7faf7; }
+.login-card .ant-input-affix-wrapper:hover { border-color: #bfd2c6; background: #fff; }
 .login-card .ant-input:focus,
 .login-card .ant-input-affix-wrapper:focus-within {
     border-color: var(--login-green);
@@ -179,6 +181,8 @@
     letter-spacing: .06em;
     box-shadow: none;
 }
+.login-card .password-verify-button.ant-btn { height: var(--login-control-height); font-size: 13px; }
+
 .login-submit.ant-btn:hover { background: #0b5740; border-color: #0b5740; }
 .login-submit.ant-btn:active { background: var(--login-green-dark); border-color: var(--login-green-dark); }
 
@@ -230,7 +234,7 @@
         padding: 30px 0 34px;
     }
     .login-card {
-        --login-control-height: 48px;
+        --login-control-height: 44px;
         --login-input-font-size: 16px;
         order: 1;
         max-width: 100%;
@@ -257,4 +261,42 @@
     .login-card { animation: login-rise .8s cubic-bezier(.22, .61, .36, 1) .16s both; }
     @keyframes login-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
     @keyframes login-fade { from { opacity: 0; } to { opacity: 1; } }
+}
+.login-link {
+    border: 0;
+    padding: 0;
+    background: none;
+    color: var(--brand);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.login-note-right { text-align: right; }
+.login-note-links { display: flex; justify-content: flex-end; gap: 18px; }
+
+.login-link:hover { text-decoration: underline; }
+
+.password-reset-links {
+    display: flex;
+    justify-content: flex-end;
+    gap: 20px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #edf2ed;
+}
+
+.login-card .password-code-otp .ant-otp { gap: 8px; }
+.login-card .password-code-otp input { flex: 0 0 38px; width: 38px; height: 35px; padding: 0; font-size: 15px; }
+.login-card-code { max-width: 380px; padding: 22px 22px 16px; }
+.login-card-code .password-email { column-gap: 10px; padding-bottom: 12px; margin-bottom: 14px; }
+.login-card-code .password-email-icon { font-size: 30px; }
+.login-card-code .password-email-to { font-size: 12px; }
+.login-card-code .password-email-hint { font-size: 11.5px; }
+.login-card-code .password-email-send.ant-btn { font-size: 12px; }
+
+@media (max-width: 900px) {
+    .login-card .password-code-otp .ant-otp { gap: 8px; }
+    .login-card .password-code-otp input { flex: 0 0 42px; width: 42px; height: 44px; padding: 0; font-size: 16px; }
 }

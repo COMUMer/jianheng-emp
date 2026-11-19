@@ -36,7 +36,7 @@ export function AvatarCropModal({ image, busy, onCancel, onSave }: {
         }
     }
 
-    return <Modal open={!!image} title="设置头像" width={560} destroyOnHidden
+    return <Modal open={!!image} centered title="设置头像" width={560} destroyOnHidden
         onCancel={busy ? undefined : onCancel} maskClosable={!busy} closable={!busy}
         footer={[
             <Button key="cancel" disabled={busy} onClick={onCancel}>取消</Button>,

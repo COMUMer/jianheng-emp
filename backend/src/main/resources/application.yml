@@ -15,8 +15,8 @@ spring:
   servlet:
     # 限制附件上传大小，分别限制单个文件和整次请求。
     multipart:
-      max-file-size: 15MB
-      max-request-size: 16MB
+      max-file-size: 50MB
+      max-request-size: 52MB
 
 mybatis-plus:
   configuration:
@@ -48,6 +48,9 @@ management:
       show-details: never
 
 server:
+  tomcat:
+    # 让超限请求体可被读完并返回 413，而不是直接断开连接。
+    max-swallow-size: 52MB
   servlet:
     session:
       cookie:
@@ -55,3 +58,7 @@ server:
         http-only: true
         # 限制跨站请求携带会话 Cookie。
         same-site: lax
+
+mail:
+  # Resend 发信密钥；发件人在系统设置的邮件设置中配置，未配置时 dev 把验证码打印到日志。
+  resend-key: ${RESEND_API_KEY:}

@@ -47,6 +47,14 @@ class WorkflowController {
     @PostMapping("/documents/{id}/submit") Detail submit(Authentication user, @PathVariable long id) { return workflow.submit(accounts.current(user), id); }
     @PostMapping("/documents/{id}/tasks/{taskId}") void handle(Authentication user, @PathVariable long id, @PathVariable long taskId,
         @Valid @RequestBody TaskInput input) { workflow.handle(accounts.current(user), id, taskId, input); }
+    @PostMapping("/documents/{id}/payment/claim") void claimPayment(Authentication user, @PathVariable long id) {
+        workflow.claimPayment(accounts.current(user), id);
+    }
+
+    @DeleteMapping("/documents/{id}/payment/claim") void releasePayment(Authentication user, @PathVariable long id) {
+        workflow.releasePayment(accounts.current(user), id);
+    }
+
     @PostMapping("/documents/{id}/payment") void pay(Authentication user, @PathVariable long id, @Valid @RequestBody PaymentInput input) {
         workflow.pay(accounts.current(user), id, input);
     }
@@ -54,10 +62,19 @@ class WorkflowController {
     @GetMapping("/inbox") List<Summary> inbox(Authentication user, @RequestParam(defaultValue="false") boolean all) {
         var actor = accounts.current(user);
         if (all) accounts.require(actor, Role.ADMIN);
-        return mapper.inbox(actor.id(), all);
+        return mapper.inbox(actor.id(), all, actor.has(Role.PAYER));
+    }
+    @GetMapping("/inbox/count") InboxCount inboxCount(Authentication user) {
+        var actor = accounts.current(user);
+        return new InboxCount(mapper.inboxCount(actor.id(), false, actor.has(Role.PAYER)));
+    }
+
+    @GetMapping("/inbox/handled") List<Handled> handled(Authentication user) {
+        return mapper.handled(accounts.current(user).id());
     }
 
     @GetMapping("/notifications") List<Notice> notices(Authentication user) { return mapper.notices(accounts.current(user).id()); }
+    @GetMapping("/notifications/unread") Unread unread(Authentication user) { return new Unread(mapper.unread(accounts.current(user).id())); }
     @PostMapping("/notifications/{id}/read") void read(Authentication user, @PathVariable long id) { mapper.readNotice(id, accounts.current(user).id()); }
 
     @GetMapping("/approval/templates/{kind}") TemplateView template(Authentication user, @PathVariable Kind kind) {
@@ -84,6 +101,24 @@ class WorkflowController {
         accounts.require(actor, Role.ADMIN, Role.FINANCE);
         mapper.changeCategory(id, input.name().strip(), actor.id());
     }
+    @PutMapping("/expenses/categories/{id}/active") void setCategoryActive(Authentication user, @PathVariable long id,
+        @Valid @RequestBody PeopleService.ActiveInput input) {
+        var actor = accounts.current(user);
+        accounts.require(actor, Role.ADMIN, Role.FINANCE);
+        if (mapper.category(id) == null) throw new IllegalArgumentException("费用类别不存在");
+        mapper.setCategoryActive(id, input.active(), actor.id());
+        audit.record(actor.id(), "EXPENSE_CATEGORY_STATUS", id, input.active() ? "启用费用类别" : "停用费用类别");
+    }
+    @DeleteMapping("/expenses/categories/{id}") void deleteCategory(Authentication user, @PathVariable long id) {
+        var actor = accounts.current(user);
+        accounts.require(actor, Role.ADMIN, Role.FINANCE);
+        var category = mapper.category(id);
+        if (category == null) throw new IllegalArgumentException("费用类别不存在");
+        if (category.active()) throw new IllegalArgumentException("请先停用费用类别");
+        if (mapper.categoryUses(id) > 0) throw new IllegalArgumentException("费用类别已被使用，不能删除");
+        mapper.deleteCategory(id);
+        audit.record(actor.id(), "EXPENSE_CATEGORY_DELETE", id, category.name());
+    }
 
     @GetMapping("/expenses/ledger") List<Summary> ledger(Authentication user, @RequestParam(required=false) Status status,
         @RequestParam(required=false) Long departmentId, @RequestParam(required=false) LocalDate from, @RequestParam(required=false) LocalDate to) {
@@ -99,7 +134,7 @@ class WorkflowController {
         try (var workbook = new XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("报销台账");
             var header = sheet.createRow(0);
-            var labels = List.of("单号", "申请人", "提交部门", "标题", "金额（元）", "状态", "提交时间", "付款日期", "付款凭证");
+            var labels = List.of("单号", "申请人", "提交部门", "标题", "金额（元）", "状态", "提交时间", "付款日期");
             for (int column = 0; column < labels.size(); column++) {
                 header.createCell(column).setCellValue(labels.get(column));
                 sheet.setColumnWidth(column, 20 * 256);
@@ -109,7 +144,7 @@ class WorkflowController {
             int index = 1;
             for (var document : rows) {
                 var row = sheet.createRow(index++);
-                row.createCell(0).setCellValue(Long.toString(document.id()));
+                row.createCell(0).setCellValue(document.documentNo());
                 row.createCell(1).setCellValue(document.applicant());
                 row.createCell(2).setCellValue(document.departmentName());
                 row.createCell(3).setCellValue(document.title());
@@ -119,14 +154,13 @@ class WorkflowController {
                 row.createCell(5).setCellValue(switch (document.status()) {
                     case DRAFT -> "草稿";
                     case IN_REVIEW -> "审批中";
-                    case RETURNED -> "已退回";
+                    case RETURNED -> "已驳回";
                     case APPROVED -> "已通过";
                     case AWAITING_PAYMENT -> "待付款";
                     case PAID -> "已付款";
                 });
                 row.createCell(6).setCellValue(Objects.toString(document.submittedAt(), ""));
                 row.createCell(7).setCellValue(Objects.toString(document.paidOn(), ""));
-                row.createCell(8).setCellValue(document.reference());
             }
             sheet.createFreezePane(0, 1);
             workbook.write(output);
@@ -137,14 +171,18 @@ class WorkflowController {
     }
 
     @PostMapping(value="/attachments", consumes="multipart/form-data") Attachment upload(Authentication user, @RequestParam MultipartFile file,
-        @RequestParam(required=false) String invoice) throws IOException, NoSuchAlgorithmException {
-        return files.upload(accounts.current(user), file, invoice);
+        @RequestParam(required=false) FileCategory category) throws IOException, NoSuchAlgorithmException {
+        return files.upload(accounts.current(user), file, category);
+    }
+    @PatchMapping("/attachments/{id}") Attachment categorize(Authentication user, @PathVariable long id,
+        @Valid @RequestBody FileCategoryInput input) {
+        return files.categorize(accounts.current(user), id, input.category());
     }
     @GetMapping("/attachments/{id}") ResponseEntity<FileSystemResource> download(Authentication user, @PathVariable long id) {
         return files.download(accounts.current(user), id);
     }
-    @PatchMapping("/attachments/{id}") Attachment updateInvoice(Authentication user, @PathVariable long id, @RequestBody AttachmentInvoice input) {
-        return files.updateInvoice(accounts.current(user), id, input.invoice());
+    @GetMapping("/attachments/{id}/preview") ResponseEntity<FileSystemResource> preview(Authentication user, @PathVariable long id) {
+        return files.preview(accounts.current(user), id);
     }
 
     private static Filter filter(Status status, Long department, LocalDate from, LocalDate to) {

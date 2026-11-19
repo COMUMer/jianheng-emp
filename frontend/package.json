@@ -15,11 +15,18 @@
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.4",
+    "@tiptap/extension-image": "^3.34.0",
+    "@tiptap/pm": "^3.34.0",
+    "@tiptap/react": "^3.34.0",
+    "@tiptap/starter-kit": "^3.34.0",
     "antd": "^6.7.0",
     "dayjs": "^1.11.23",
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.1.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-easy-crop": "^6.2.5"
+    "react-easy-crop": "^6.2.5",
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",

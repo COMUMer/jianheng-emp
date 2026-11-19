@@ -3,6 +3,11 @@ import { afterEach, vi } from 'vitest';
 
 afterEach(cleanup);
 
+Object.defineProperties(Range.prototype, {
+    getClientRects: { value: () => [] },
+    getBoundingClientRect: { value: () => new DOMRect() },
+});
+
 vi.stubGlobal('ResizeObserver', class {
     observe() {}
     unobserve() {}

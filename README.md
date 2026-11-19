@@ -28,6 +28,27 @@ npm.cmd run dev -- --host 127.0.0.1 --port 5175 --strictPort
 
 首次配置依次在「人员管理」创建部门、岗位和员工，在员工档案中开通账号并授权，再为部门设置负责人。在「系统设置 → 审批规则」发布请假、出差、采购及报销模板。报销模板需要必经的财务审核节点，付款登记需要单独授权。
 
+## 邮件验证码（Resend）
+
+验证码邮件通过 Resend HTTP API 发送，无需安装 SDK。未配置 `RESEND_API_KEY` 时，`dev` 把验证码打印到后端日志，生产环境会提示“邮件服务未配置”。
+
+1. 在 [Resend](https://resend.com) 控制台添加发信域名，按提示到 DNS 服务商添加 DKIM、SPF、MX 记录，等待域名状态变为 Verified。推荐使用子域（如 `mail.comum.cn`），避免与根域现有邮箱的 MX/SPF 记录冲突。
+2. 在 API Keys 创建仅有 Sending access 权限的密钥。
+3. 在 `.env.dev`（生产为 `.env.prod`）填写 `RESEND_API_KEY=re_...`。
+4. 重启后端，在「系统设置 → 邮件设置」填写发件人。发件人必须使用已验证域名；仅联调时可临时使用 `onboarding@resend.dev`，此时只能发到 Resend 账号自己的邮箱。
+5. 发送验证码后，可在 Resend 控制台 Emails 查看投递结果；后端日志会记录 Resend 的非 2xx 响应。
+6. 密钥只放环境变量，不提交仓库。读取逻辑见 [MailConfiguration.java](backend/src/main/java/com/jianheng/emp/security/MailConfiguration.java) 与 [ResendMailer.java](backend/src/main/java/com/jianheng/emp/security/ResendMailer.java)。
+
+管理员可在「邮件设置」编辑验证码邮件、插入图片并预览。相关入口见 [邮件设置与预览](docs/frontend.md#前端品牌与登录)。
+
+可先用 API 直接验证密钥和发件域名：
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:RESEND_API_KEY" }
+$body = @{ from = 'JH-EMP <no-reply@mail.example.com>'; to = @('you@example.com'); subject = 'Resend 联调'; text = 'ok' } | ConvertTo-Json
+Invoke-RestMethod -Method Post 'https://api.resend.com/emails' -Headers $headers -ContentType 'application/json' -Body $body
+```
+
 ## 验证
 
 - 后端沿用本地启动所用的环境变量，在 `backend` 执行 `.\mvnw.cmd '-Dtest=HealthEndpointTest,WorkflowRulesTest' test`。健康检查测试连接本地开发数据库。

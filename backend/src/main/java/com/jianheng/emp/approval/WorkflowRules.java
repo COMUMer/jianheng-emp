@@ -1,15 +1,31 @@
 package com.jianheng.emp.approval;
 
+import com.jianheng.emp.approval.WorkflowData.Assignment;
+import com.jianheng.emp.approval.WorkflowData.FileCategory;
+import com.jianheng.emp.security.Role;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.text.Normalizer;
-import java.util.Locale;
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Objects;
 
 public final class WorkflowRules {
     private WorkflowRules() {}
 
     public static boolean includesNode(BigDecimal amount, BigDecimal minimum) {
         return minimum == null || amount != null && amount.compareTo(minimum) >= 0;
+    }
+
+    public static boolean canApprove(Assignment assignment, LocalDate departedOn, Collection<Role> roles) {
+        return departedOn == null && (assignment != Assignment.FINANCE || roles.contains(Role.FINANCE));
+    }
+
+    /** 或签：主审批人与替代审批人都可用时两人并列，任一处理即可；只有一方可用时另一人为空。 */
+    public static Long[] approverPair(boolean primaryEligible, boolean alternateEligible, Long primary, Long alternate) {
+        if (!primaryEligible && !alternateEligible) return null;
+        Long assignee = primaryEligible ? primary : alternate;
+        Long peer = primaryEligible && alternateEligible && !Objects.equals(primary, alternate) ? alternate : null;
+        return new Long[]{assignee, peer};
     }
 
     public static BigDecimal money(BigDecimal amount) {
@@ -20,11 +36,13 @@ public final class WorkflowRules {
         return amount.setScale(2, RoundingMode.UNNECESSARY);
     }
 
-    public static String invoiceKey(String value) {
-        if (value == null || value.isBlank()) return null;
-        String key = Normalizer.normalize(value, Normalizer.Form.NFKC).replaceAll("(?U)\\s+", "")
-            .toUpperCase(Locale.ROOT);
-        if (key.length() > 100) throw new IllegalArgumentException("票号过长");
-        return key.isEmpty() ? null : key;
+    public static void requireExpenseAttachments(Collection<FileCategory> categories) {
+        if (categories.stream().anyMatch(Objects::isNull)) throw new IllegalArgumentException("请为每个附件选择类型");
+        if (!categories.contains(FileCategory.INVOICE)) throw new IllegalArgumentException("请上传发票");
+        if (!categories.contains(FileCategory.PAYMENT)) throw new IllegalArgumentException("请上传付款记录");
+    }
+
+    public static void requirePurchaseAttachment(Collection<FileCategory> categories) {
+        if (categories.isEmpty()) throw new IllegalArgumentException("请上传采购附件");
     }
 }

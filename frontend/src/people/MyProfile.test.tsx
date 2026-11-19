@@ -1,5 +1,6 @@
 import { App } from 'antd';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { expect, test, vi } from 'vitest';
 import { api } from '../api';
 import type { Model } from '../api';
@@ -31,7 +32,7 @@ function renderMyProfile(current: Model<'EmployeeDetail'>) {
         if (path === '/people/employees/1') return current as never;
         throw new Error(`Unexpected request: ${path}`);
     });
-    render(<App><MyProfile user={user} /></App>);
+    render(<MemoryRouter><App><MyProfile user={user} /></App></MemoryRouter>);
 }
 
 test('shows my own profile directly instead of an employee list', async () => {
@@ -41,7 +42,7 @@ test('shows my own profile directly instead of an employee list', async () => {
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('button', { name: '新增员工' })).toBeNull();
     expect(screen.getByText('xianghongrui')).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: '登录账号' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: '账号与权限' })).toBeNull();
     expect(await screen.findByText('见衡/总办/人力资源部')).toBeTruthy();
     expect(screen.getByText(/入职 \d+ 天/)).toBeTruthy();
     expect(screen.getByRole('button', { name: '更换头像' })).toBeTruthy();
