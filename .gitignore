@@ -31,6 +31,7 @@ id_rsa
 # Local verification artifacts and logs
 /.qa/
 *.log
+*.log.gz
 
 # Editor and OS files
 /.idea/

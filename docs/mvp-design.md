@@ -36,7 +36,7 @@
 
 - 每套环境由一个后端进程承载业务模块和公共能力。该环境的业务数据、登录会话和待办共用其 MySQL 实例。首版不部署 Redis、消息队列或独立工作流服务。
 - 浏览器通过同域入口访问页面和 API，使用会话 Cookie，写请求执行 CSRF 校验。账号停用或角色变更时撤销该账号的已有会话。 [Spring Security CSRF](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html) · [Spring Session 按用户查询会话](https://docs.spring.io/spring-session/reference/api.html)
-- 后端将原始附件写入当前环境的私有存储，在数据库保存业务归属、原文件名、存储键和文件哈希。附件目录由 `EMP_UPLOAD_DIR` 指定，读法与默认值见 [`AttachmentService`](../backend/src/main/java/com/jianheng/emp/approval/AttachmentService.java)，变量填写见 [README](../README.md#本地启动)。下载和在线预览经业务对象授权后由后端提供。生产在统一备份窗口内暂停业务写入，一起备份数据库和附件，并在试点前演练配对恢复。
+- 后端将原始附件写入当前环境的私有存储，在数据库保存业务归属、原文件名、存储键和文件哈希。附件目录由 `EMP_UPLOAD_DIR` 指定，读法与默认值见 [`AttachmentService`](../backend/src/main/java/com/jianheng/emp/approval/AttachmentService.java)，变量填写见 [README](../README.md#本地启动)。后端运行日志统一写入 `${EMP_LOG_DIR}/backend.log`，默认最多保留 90 天，配置见 [`application.yml`](../backend/src/main/resources/application.yml)。下载和在线预览经业务对象授权后由后端提供。生产在统一备份窗口内暂停业务写入，一起备份数据库和附件，并在试点前演练配对恢复。
 
 ### 环境划分
 

@@ -18,6 +18,26 @@ spring:
       max-file-size: 50MB
       max-request-size: 52MB
 
+logging:
+  # 所有后端日志写同一个文件；路径由 EMP_LOG_DIR 指定。
+  file:
+    name: ${EMP_LOG_DIR:./data/logs}/backend.log
+  structured:
+    format:
+      file: ecs
+    ecs:
+      service:
+        name: jh-emp
+        environment: ${spring.profiles.active:default}
+  logback:
+    rollingpolicy:
+      max-file-size: ${EMP_LOG_MAX_FILE_SIZE:100MB}
+      max-history: ${EMP_LOG_MAX_HISTORY_DAYS:60}
+      total-size-cap: ${EMP_LOG_TOTAL_SIZE_CAP:10GB}
+      file-name-pattern: ${EMP_LOG_DIR:./data/logs}/backend.%d{yyyy-MM-dd}.%i.log.gz
+  level:
+    root: ${EMP_LOG_LEVEL:INFO}
+
 mybatis-plus:
   configuration:
     # 把 SQL 列名 employee_id 映射到 Java 属性 employeeId。

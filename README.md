@@ -6,7 +6,7 @@
 
 需要 JDK 25、Node.js 24 和 MySQL 8.4。使用 [Maven Wrapper](backend/.mvn/wrapper/maven-wrapper.properties) 构建后端。
 
-在本机 MySQL 创建开发库及应用账号，使用 `utf8mb4`，给该账号授予这个数据库的读写及迁移权限。填写仓库根目录的 `.env.dev`：`DB_URL`、`DB_USER`、`DB_PASSWORD` 指向本地开发库，`SERVER_ADDRESS` 控制本地监听地址，`OPENAPI_ENABLED` 控制 OpenAPI，`EMP_UPLOAD_DIR` 指定附件目录（例如 `C:/data/jh-emp/dev/uploads`，也可用仓库内已忽略的 `backend/uploads`，不存在时会自动创建）。配置按 Java Properties 语法填写，值直接写在等号后，字面反斜杠写成 `\\`。
+在本机 MySQL 创建开发库及应用账号，使用 `utf8mb4`，给该账号授予这个数据库的读写及迁移权限。填写仓库根目录的 `.env.dev`：`DB_URL`、`DB_USER`、`DB_PASSWORD` 指向本地开发库，`SERVER_ADDRESS` 控制本地监听地址，`OPENAPI_ENABLED` 控制 OpenAPI，`EMP_UPLOAD_DIR` 指定附件目录（例如 `C:/data/jh-emp/dev/uploads`，也可用仓库内已忽略的 `backend/uploads`，不存在时会自动创建），`EMP_LOG_DIR` 指定日志目录。配置按 Java Properties 语法填写，值直接写在等号后，字面反斜杠写成 `\\`。
 
 在能运行 `java -version` 的 PowerShell 窗口中，从仓库根目录启动后端。
 
@@ -23,6 +23,10 @@ Set-Location frontend
 npm.cmd ci
 npm.cmd run dev -- --host 127.0.0.1 --port 5175 --strictPort
 ```
+
+## 日志
+
+后端日志统一写入 `${EMP_LOG_DIR}/backend.log`，单文件 JSON Lines（ECS），默认最多保留 90 天、单文件 100MB、总量 10GB。`EMP_LOG_DIR` 未设置时使用 `./data/logs`；生产可将 `EMP_LOG_DIR` 指向持久卷，例如 `/var/log/jh-emp`。启动日志会打印解析后的路径，HTTP 请求、登录、401/403、异常和慢请求都写入同一文件，按 `request.id` 和 `trace.id` 关联。
 
 打开 Vite 终端输出的本地地址。开发账号由 [Flyway 开发迁移](backend/src/main/resources/db/dev/V3__seed_development_accounts.sql) 创建，账号与初始密码相同。生产在账号表为空时用 `EMP_ADMIN_USER` 和 `EMP_ADMIN_PASSWORD` 初始化管理员，密码至少 10 个字符。启动参数见 [`application.yml`](backend/src/main/resources/application.yml)，本地 API 代理见 [`vite.config.ts`](frontend/vite.config.ts)。
 
