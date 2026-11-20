@@ -181,7 +181,8 @@ class WorkflowService {
         if (mapper.returnOverdueTask(taskId) == 0) return;
         mapper.closeWaiting(task.revisionId());
         mapper.changeStatus(document.id(), Status.RETURNED);
-        long system = mapper.systemAccountId();
+        Long system = mapper.systemAccountId();
+        if (system == null) throw new IllegalStateException("系统账号缺失，无法记录超期驳回");
         mapper.event(task.revisionId(), taskId, system, Action.RETURN.name(), "审批超期，系统自动驳回");
         String headline = subject(task.revisionId());
         notifier.notify(task.assigneeId(), document.id(), system, headline + "审批超期，已自动驳回");

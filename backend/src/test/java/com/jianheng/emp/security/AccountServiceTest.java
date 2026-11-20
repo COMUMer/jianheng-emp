@@ -1,6 +1,8 @@
 package com.jianheng.emp.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.mockito.ArgumentMatchers.any;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,6 +34,29 @@ class AccountServiceTest {
     private final PasswordEncoder passwords = mock(PasswordEncoder.class);
     private final AccountService service = new AccountService(mapper, mock(AuditMapper.class),
         passwords, TestPii.CIPHER, mock(JdbcIndexedSessionRepository.class), "admin", "");
+
+    @Test
+    void createsTheDisabledSystemAccountOnStartup() {
+        when(mapper.byUsername("系统")).thenReturn(null);
+        var encoder = new BCryptPasswordEncoder();
+        var bootstrap = new AccountService(mapper, mock(AuditMapper.class), encoder, TestPii.CIPHER,
+            mock(JdbcIndexedSessionRepository.class), "admin", "");
+
+        bootstrap.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        var hash = ArgumentCaptor.forClass(String.class);
+        verify(mapper).insertDisabled(eq("系统"), hash.capture());
+        assertTrue(hash.getValue().startsWith("$2"));
+    }
+
+    @Test
+    void keepsTheSystemAccountWhenItAlreadyExists() {
+        when(mapper.byUsername("系统")).thenReturn(mock(AccountMapper.Account.class));
+
+        service.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        verify(mapper, never()).insertDisabled(any(), any());
+    }
 
     @Test
     void exposesTheMisOfTheSignedInEmployee() {

@@ -34,6 +34,8 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
     public record AccountView(long id, boolean active, List<Role> roles, java.time.LocalDateTime createdAt,
                               java.time.LocalDateTime updatedAt, String operator) {}
 
+    private static final String SYSTEM_ACCOUNT = "系统";
+
     private final AccountMapper mapper;
     private final AuditMapper audit;
     private final PasswordEncoder passwords;
@@ -58,10 +60,17 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
+        ensureSystemAccount();
         if (mapper.count() != 0 || adminPassword.isBlank()) return;
         validateCredentials(adminUsername, adminPassword);
         mapper.insert(adminUsername, passwords.encode(adminPassword), null);
         mapper.addRole(mapper.byUsername(adminUsername).id(), Role.ADMIN);
+    }
+
+    /** 系统账号只作为审批超期等系统动作的操作人：禁登录，密码是无人知晓的随机值。 */
+    private void ensureSystemAccount() {
+        if (mapper.byUsername(SYSTEM_ACCOUNT) != null) return;
+        mapper.insertDisabled(SYSTEM_ACCOUNT, passwords.encode(UUID.randomUUID().toString()));
     }
 
     @Override

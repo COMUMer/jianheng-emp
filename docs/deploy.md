@@ -27,8 +27,8 @@
 | 服务 | 镜像 | 端口 | 持久化 |
 | --- | --- | --- | --- |
 | `backend` | `ghcr.io/<owner>/jianheng-emp-server:${IMAGE_TAG}` | `127.0.0.1:8080` | 附件 `/data/uploads`、日志 `/data/logs` |
-| `mysql` | `ghcr.io/<owner>/mirror-mysql:<版本>` | 仅容器网络 | 数据目录 |
-| `cloudflared` | `ghcr.io/<owner>/mirror-cloudflared:<版本>` | 无 | 无 |
+| `mysql` | `ghcr.io/<owner>/mirror-mysql:8.4.13` | 仅容器网络 | 数据目录 |
+| `cloudflared` | `ghcr.io/<owner>/mirror-cloudflared:2026.11.1` | 无 | 无 |
 
 - 宿主机 `/var/lib/jh-emp/{mysql,uploads,logs}` 与容器路径一一对应，备份脚本直接读取。
 - 两个容器统一 `TZ=Asia/Shanghai`。数据库存 `DATETIME`，时区不一致会让超期判断整体偏移。
@@ -70,14 +70,14 @@
 | 主机 `/opt/jh-emp/.env` | 数据库名与账号、隧道 token |
 | 主机 `/opt/jh-emp/.env.prod` | `prod` profile、管理员初始账号、发信密钥、敏感字段密钥 `PII_KEYS`；只读挂载进容器，由 `SPRING_CONFIG_IMPORT` 导入 |
 
-生产的配置真相源是 Secrets 里的 `ENV_FILE` 与 `ENV_PROD`，主机上的文件是它们的副本，每次发布覆盖写入，不做手工修改。写入用 `install` 一次完成内容、属主与权限：`.env` 归 root、`.env.prod` 归容器内的 1001，两者 600。数据库账号与密码只出现在 `.env`，`.env.prod` 不重复保存。写入失败即中止发布，线上不受影响。
+生产的配置真相源是 Secrets 里的 `ENV_FILE` 与 `ENV_PROD`，主机上的文件是它们的副本，每次发布覆盖写入，不做手工修改。写入由部署账号完成，不需要提权：镜像内的应用用户固定 uid 1000，与部署账号一致，因此挂进容器的 `.env.prod` 保持 600 也可读。数据库账号与密码只出现在 `.env`，`.env.prod` 不重复保存。写入失败即中止发布，线上不受影响。
 
 ## 发布、回滚与备份
 
 发布脚本按序执行，任一步失败即中止：
 
 1. `flock` 加锁，阻止并发发布
-2. 用 `install` 写入 `.env` 与 `.env.prod`
+2. 用 `install -m 600` 写入 `.env` 与 `.env.prod`
 3. 记录当前运行标签到 `previous.tag`
 4. `mysqldump --single-transaction` 与附件打包写入 `backup/`，失败即退出
 5. `docker compose pull` 目标镜像，标签由命令行传入，不写入 `.env`；拉取失败时线上容器不受影响
@@ -93,7 +93,7 @@
 
 ## 首次上线
 
-1. 主机安装 Docker，创建 `/opt/jh-emp` 与 `/var/lib/jh-emp/{mysql,uploads,logs}`
+1. 主机安装 Docker，创建 `/opt/jh-emp` 与 `/var/lib/jh-emp/{mysql,uploads,logs}`；前者与 uploads、logs 归部署账号，mysql 归容器内的 uid 999
 2. Cloudflare 创建隧道，公开主机名指向 `http://backend:8080`，token 记入 `ENV_FILE`
 3. 配置 GitHub Secrets：SSH 四项与 `ENV_FILE`、`ENV_PROD`
 4. 用 `workflow_dispatch` 触发首次发布，确认镜像、部署与健康检查

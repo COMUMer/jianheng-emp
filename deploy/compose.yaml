@@ -1,0 +1,63 @@
+# 生产运行时。镜像标签由发布脚本传入，配置从 .env 与 .env.prod 注入。
+name: jianheng-emp
+
+services:
+  backend:
+    image: ghcr.io/comumer/jianheng-emp-server:${IMAGE_TAG}
+    environment:
+      TZ: Asia/Shanghai
+      # 固定堆，避免 JVM 按机器总内存自动计算导致行为漂移；堆溢出时让容器退出而不是卡死。
+      JAVA_TOOL_OPTIONS: "-Xms512m -Xmx512m -XX:+ExitOnOutOfMemoryError"
+      SPRING_CONFIG_IMPORT: "file:/run/config/.env.prod[.properties]"
+      DB_URL: "jdbc:mysql://mysql:3306/${DB_NAME}"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      EMP_UPLOAD_DIR: /data/uploads
+      EMP_LOG_DIR: /data/logs
+    # 只绑回环：宿主机可做健康检查与排障，公网不可达。
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./.env.prod:/run/config/.env.prod:ro
+      - /var/lib/jh-emp/uploads:/data/uploads
+      - /var/lib/jh-emp/logs:/data/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+    mem_limit: 640m
+    restart: unless-stopped
+
+  mysql:
+    image: ghcr.io/comumer/mirror-mysql:8.4.13
+    command:
+      - --innodb-buffer-pool-size=256M
+      - --max-connections=50
+      - --character-set-server=utf8mb4
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - /var/lib/jh-emp/mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    mem_limit: 768m
+    restart: unless-stopped
+
+  cloudflared:
+    image: ghcr.io/comumer/mirror-cloudflared:2026.11.1
+    environment:
+      TZ: Asia/Shanghai
+      # token 走环境变量而不是命令行，避免出现在 docker inspect 的参数里。
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run
+    depends_on:
+      - backend
+    mem_limit: 128m
+    restart: unless-stopped

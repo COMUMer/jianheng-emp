@@ -63,13 +63,14 @@ jobs:
 
       - name: 输出结果
         run: |
+          set -euo pipefail
           {
             echo "## 已同步到 GHCR"
             echo ""
             echo "| 镜像 | 版本 |"
             echo "| --- | --- |"
-            echo "| `ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-mysql` | `${{ steps.resolve.outputs.mysql_tag }}` |"
-            echo "| `ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-cloudflared` | `${{ steps.resolve.outputs.cloudflared_tag }}` |"
+            echo "| ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-mysql | ${{ steps.resolve.outputs.mysql_tag }} |"
+            echo "| ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-cloudflared | ${{ steps.resolve.outputs.cloudflared_tag }} |"
             echo ""
             echo "> 这两个包默认是私有的。在 Package settings 里把可见性改成 Public，服务器才能免登录拉取。"
           } >> "$GITHUB_STEP_SUMMARY"

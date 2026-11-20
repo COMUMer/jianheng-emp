@@ -84,6 +84,12 @@ public interface AccountMapper {
     @Update("UPDATE account SET updated_by = #{actor} WHERE id = #{id}")
     void touchOperator(long id, long actor);
 
+    /** 系统动作的操作人账号：禁用状态，重复执行不报错。 */
+    @Insert("""
+        INSERT INTO account(username, password_hash, employee_id, active) VALUES(#{username}, #{hash}, NULL, FALSE)
+        ON DUPLICATE KEY UPDATE username = username
+        """)
+    void insertDisabled(String username, String hash);
     @Select("SELECT id_card FROM employee WHERE id = #{id}")
     String employeeIdCard(long id);
 

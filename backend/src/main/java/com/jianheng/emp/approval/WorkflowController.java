@@ -94,12 +94,18 @@ class WorkflowController {
     @PostMapping("/expenses/categories") void createCategory(Authentication user, @Valid @RequestBody PeopleService.NameInput input) {
         var actor = accounts.current(user);
         accounts.require(actor, Role.ADMIN, Role.FINANCE);
-        mapper.addCategory(input.name().strip(), actor.id());
+        String name = input.name().strip();
+        mapper.addCategory(name, actor.id());
+        audit.record(actor.id(), "EXPENSE_CATEGORY_CREATE", mapper.insertedId(), name);
     }
     @PutMapping("/expenses/categories/{id}") void updateCategory(Authentication user, @PathVariable long id, @Valid @RequestBody PeopleService.NameInput input) {
         var actor = accounts.current(user);
         accounts.require(actor, Role.ADMIN, Role.FINANCE);
-        mapper.changeCategory(id, input.name().strip(), actor.id());
+        var category = mapper.category(id);
+        if (category == null) throw new IllegalArgumentException("费用类别不存在");
+        String name = input.name().strip();
+        mapper.changeCategory(id, name, actor.id());
+        audit.record(actor.id(), "EXPENSE_CATEGORY_RENAME", id, category.name() + " → " + name);
     }
     @PutMapping("/expenses/categories/{id}/active") void setCategoryActive(Authentication user, @PathVariable long id,
         @Valid @RequestBody PeopleService.ActiveInput input) {

@@ -14,6 +14,6 @@
   },
   "vars": {
     // 后端域名，指向隧道公开的主机名。
-    "ORIGIN": "https://api.jianheng.tech"
+    "ORIGIN": "https://api.comum.cn"
   }
 }
