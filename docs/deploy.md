@@ -39,7 +39,8 @@
 
 | 路径 | 职责 |
 | --- | --- |
-| `backend/Dockerfile` | 多阶段构建：编译镜像产出 jar，运行镜像只含 JRE 与 jar，以非 root 用户运行 |
+| [backend/Dockerfile](../backend/Dockerfile) | 多阶段构建：编译镜像产出 jar，运行镜像只含 JRE 与 jar，以非 root 用户运行 |
+| [backend/.mvn/wrapper/maven-wrapper.properties](../backend/.mvn/wrapper/maven-wrapper.properties) | Maven 分发包与 SHA-256 校验配置 |
 | `backend/.dockerignore` | 排除构建产物、附件目录与本地配置，避免密钥进入构建上下文 |
 | `deploy/compose.yaml` | 三个服务的镜像、内存上限、卷、健康检查与启动依赖 |
 | `deploy/deploy.sh` | 主机侧发布：加锁、备份、拉取、更新、健康门禁、回滚、清理 |

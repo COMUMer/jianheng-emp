@@ -1,9 +1,13 @@
 # 构建阶段：用 JDK 镜像跑 Maven，产出可执行 jar。
 FROM eclipse-temurin:25-jdk AS build
+# Maven Wrapper 的下载与 ZIP 解压依赖。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget ca-certificates unzip \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
-RUN ./mvnw -B -q -DskipTests dependency:go-offline
+RUN ./mvnw -B -DskipTests dependency:go-offline
 COPY src src
 RUN ./mvnw -B -DskipTests package
 
