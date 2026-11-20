@@ -5,3 +5,8 @@ server:
       cookie:
         # 浏览器只通过 HTTPS 发送会话 Cookie。
         secure: true
+
+logging:
+  threshold:
+    # 生产不写标准输出，日志只落文件，避免同一份内容被容器日志再存一遍。
+    console: "OFF"
