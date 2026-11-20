@@ -49,6 +49,13 @@ echo "==> 健康检查"
 for attempt in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:8080/api/health 2>/dev/null | grep -q '"status":"UP"'; then
     printf '%s\n' "${TAG}" > .current
+    # 只保留当前与上一个版本的镜像，历史版本不再占磁盘。
+    for tag in $(docker images --filter=reference="${IMAGE}" --format '{{.Tag}}'); do
+      case "${tag}" in
+        "${TAG}"|"${PREVIOUS}"|latest) ;;
+        *) docker rmi "${IMAGE}:${tag}" >/dev/null 2>&1 || true ;;
+      esac
+    done
     docker image prune -f >/dev/null
     find backup -type f -mtime +7 -delete
     echo "==> 完成：${TAG}"
