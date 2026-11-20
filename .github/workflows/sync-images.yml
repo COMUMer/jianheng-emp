@@ -1,0 +1,75 @@
+# 把 Docker Hub 上的第三方镜像搬到 GHCR。只在需要更新镜像时手动触发一次。
+name: Sync images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 解析上游版本
+        id: resolve
+        run: |
+          set -euo pipefail
+          # GHCR 的路径必须全小写，仓库属主可能含大写字母。
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+          mysql_tag=$(curl -fsSL 'https://hub.docker.com/v2/repositories/library/mysql/tags?page_size=100&name=8.4.' \
+            | jq -r '[.results[].name | select(test("^8\\.4\\.[0-9]+$"))] | sort_by(split(".") | map(tonumber)) | last // empty')
+          if [ -z "$mysql_tag" ]; then
+            echo "::error::Docker Hub 上没有找到 mysql 8.4.x 的标签"
+            exit 1
+          fi
+          echo "mysql_tag=$mysql_tag" >> "$GITHUB_OUTPUT"
+
+          cloudflared_tag=$(curl -fsSL 'https://hub.docker.com/v2/repositories/cloudflare/cloudflared/tags?page_size=100' \
+            | jq -r '[.results[].name | select(test("^[0-9]{4}\\.[0-9]+\\.[0-9]+$"))] | sort_by(split(".") | map(tonumber)) | last // empty')
+          if [ -z "$cloudflared_tag" ]; then
+            echo "::error::Docker Hub 上没有找到 cloudflared 的版本标签"
+            exit 1
+          fi
+          echo "cloudflared_tag=$cloudflared_tag" >> "$GITHUB_OUTPUT"
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 搬运 mysql
+        env:
+          TAG: ${{ steps.resolve.outputs.mysql_tag }}
+        run: |
+          set -euo pipefail
+          docker pull "mysql:$TAG"
+          docker tag "mysql:$TAG" "ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-mysql:$TAG"
+          docker push "ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-mysql:$TAG"
+
+      - name: 搬运 cloudflared
+        env:
+          TAG: ${{ steps.resolve.outputs.cloudflared_tag }}
+        run: |
+          set -euo pipefail
+          docker pull "cloudflare/cloudflared:$TAG"
+          docker tag "cloudflare/cloudflared:$TAG" "ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-cloudflared:$TAG"
+          docker push "ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-cloudflared:$TAG"
+
+      - name: 输出结果
+        run: |
+          {
+            echo "## 已同步到 GHCR"
+            echo ""
+            echo "| 镜像 | 版本 |"
+            echo "| --- | --- |"
+            echo "| `ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-mysql` | `${{ steps.resolve.outputs.mysql_tag }}` |"
+            echo "| `ghcr.io/${{ steps.resolve.outputs.owner }}/mirror-cloudflared` | `${{ steps.resolve.outputs.cloudflared_tag }}` |"
+            echo ""
+            echo "> 这两个包默认是私有的。在 Package settings 里把可见性改成 Public，服务器才能免登录拉取。"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -26,9 +26,9 @@
 
 | 服务 | 镜像 | 端口 | 持久化 |
 | --- | --- | --- | --- |
-| `backend` | `ghcr.io/<owner>/jh-emp:${IMAGE_TAG}` | `127.0.0.1:8080` | 附件 `/data/uploads`、日志 `/data/logs` |
-| `mysql` | `mysql:8.4.13` | 仅容器网络 | 数据目录 |
-| `cloudflared` | `cloudflare/cloudflared` | 无 | 无 |
+| `backend` | `ghcr.io/<owner>/jianheng-emp-server:${IMAGE_TAG}` | `127.0.0.1:8080` | 附件 `/data/uploads`、日志 `/data/logs` |
+| `mysql` | `ghcr.io/<owner>/mirror-mysql:<版本>` | 仅容器网络 | 数据目录 |
+| `cloudflared` | `ghcr.io/<owner>/mirror-cloudflared:<版本>` | 无 | 无 |
 
 - 宿主机 `/var/lib/jh-emp/{mysql,uploads,logs}` 与容器路径一一对应，备份脚本直接读取。
 - 两个容器统一 `TZ=Asia/Shanghai`。数据库存 `DATETIME`，时区不一致会让超期判断整体偏移。
