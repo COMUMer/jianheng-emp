@@ -1,5 +1,6 @@
 package com.jianheng.emp.web.logging;
 
+import com.jianheng.emp.security.pii.PiiCipher;
 import java.nio.file.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,14 +19,17 @@ class StartupLogger implements ApplicationRunner {
     private final String logFile;
     private final String uploadDir;
     private final long retentionDays;
+    private final PiiCipher cipher;
 
     StartupLogger(Environment environment, @Value("${logging.file.name:}") String logFile,
                   @Value("${EMP_UPLOAD_DIR:./data/uploads}") String uploadDir,
-                  @Value("${logging.logback.rollingpolicy.max-history:90}") long retentionDays) {
+                  @Value("${logging.logback.rollingpolicy.max-history:60}") long retentionDays,
+                  PiiCipher cipher) {
         this.environment = environment;
         this.logFile = logFile;
         this.uploadDir = uploadDir;
         this.retentionDays = retentionDays;
+        this.cipher = cipher;
     }
 
     @Override
@@ -35,6 +39,7 @@ class StartupLogger implements ApplicationRunner {
             .addKeyValue("app.profiles", String.join(",", environment.getActiveProfiles()))
             .addKeyValue("app.log_file", absolute(logFile))
             .addKeyValue("app.log_retention_days", retentionDays)
+            .addKeyValue("app.pii_key_version", "v" + cipher.activeVersion())
             .addKeyValue("app.upload_dir", absolute(uploadDir))
             .addKeyValue("app.java_version", System.getProperty("java.version"))
             .addKeyValue("app.os", System.getProperty("os.name"))

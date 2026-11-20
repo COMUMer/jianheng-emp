@@ -133,6 +133,11 @@ public class PiiCipher {
         }
     }
 
+    /** 当前生效的密钥版本，供启动日志确认轮换进度（不暴露密钥）。 */
+    public int activeVersion() {
+        return activeVersion;
+    }
+
     /** 是否已经是当前版本格式的密文，供数据迁移判断幂等。 */
     public boolean isEncrypted(String value) {
         return value != null && value.matches("v\\d+:.*");

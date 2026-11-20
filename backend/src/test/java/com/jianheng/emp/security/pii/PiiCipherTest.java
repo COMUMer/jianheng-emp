@@ -82,6 +82,12 @@ class PiiCipherTest {
     }
 
     @Test
+    void reportsTheActiveKeyVersion() {
+        assertEquals(1, cipher.activeVersion());
+        assertEquals(2, new PiiCipher(key(1) + "," + key(2)).activeVersion());
+    }
+
+    @Test
     void requiresAKey() {
         assertThrows(IllegalStateException.class, () -> new PiiCipher(""));
         assertThrows(IllegalStateException.class, () -> new PiiCipher("v1:abcd"));

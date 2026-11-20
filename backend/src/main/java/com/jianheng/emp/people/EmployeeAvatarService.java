@@ -13,6 +13,8 @@ import java.util.UUID;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.*;
@@ -25,6 +27,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class EmployeeAvatarService {
+    private static final Logger log = LoggerFactory.getLogger(EmployeeAvatarService.class);
+
     public record AvatarView(String avatarKey) {}
 
     private static final int SIZE = 256;
@@ -100,7 +104,9 @@ public class EmployeeAvatarService {
                 try {
                     if (status != STATUS_COMMITTED) Files.deleteIfExists(uploaded);
                     else if (previousKey != null) Files.deleteIfExists(directory.resolve(previousKey));
-                } catch (IOException ignored) {}
+                } catch (IOException error) {
+                    log.warn("头像文件清理失败 key={}", uploaded.getFileName(), error);
+                }
             }
         });
     }

@@ -1,5 +1,6 @@
 package com.jianheng.emp.security;
 
+import com.jianheng.emp.web.ClientIp;
 import com.jianheng.emp.web.logging.RequestLoggingFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +22,11 @@ class SecurityConfiguration {
     private static final Logger securityLog = LoggerFactory.getLogger("com.jianheng.emp.security");
 
     private final RequestLoggingFilter requestLoggingFilter;
+    private final ClientIp clientIp;
 
-    SecurityConfiguration(RequestLoggingFilter requestLoggingFilter) {
+    SecurityConfiguration(RequestLoggingFilter requestLoggingFilter, ClientIp clientIp) {
         this.requestLoggingFilter = requestLoggingFilter;
+        this.clientIp = clientIp;
     }
 
     @Bean
@@ -46,7 +49,7 @@ class SecurityConfiguration {
                         .addKeyValue("event.action", "AUTH_LOGIN_SUCCESS")
                         .addKeyValue("event.outcome", "success")
                         .addKeyValue("user.name", authentication.getName())
-                        .addKeyValue("client.ip", request.getRemoteAddr())
+                        .addKeyValue("client.ip", clientIp.of(request))
                         .log("login succeeded");
                     response.setStatus(204);
                 })
@@ -55,7 +58,7 @@ class SecurityConfiguration {
                         .addKeyValue("event.action", "AUTH_LOGIN_FAILURE")
                         .addKeyValue("event.outcome", "failure")
                         .addKeyValue("user.name", username(request.getParameter("username")))
-                        .addKeyValue("client.ip", request.getRemoteAddr())
+                        .addKeyValue("client.ip", clientIp.of(request))
                         .addKeyValue("error.type", exception.getClass().getSimpleName())
                         .log("login failed");
                     response.setStatus(401);
@@ -65,7 +68,7 @@ class SecurityConfiguration {
                     var event = securityLog.atInfo()
                         .addKeyValue("event.action", "AUTH_LOGOUT")
                         .addKeyValue("event.outcome", "success")
-                        .addKeyValue("client.ip", request.getRemoteAddr());
+                        .addKeyValue("client.ip", clientIp.of(request));
                     if (authentication != null) event.addKeyValue("user.name", authentication.getName());
                     event.log("logout completed");
                     response.setStatus(204);
@@ -76,7 +79,7 @@ class SecurityConfiguration {
                     securityLog.atWarn()
                         .addKeyValue("event.action", "AUTH_REQUIRED")
                         .addKeyValue("event.outcome", "failure")
-                        .addKeyValue("client.ip", request.getRemoteAddr())
+                        .addKeyValue("client.ip", clientIp.of(request))
                         .addKeyValue("url.path", request.getRequestURI())
                         .log("authentication required");
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
@@ -85,7 +88,7 @@ class SecurityConfiguration {
                     securityLog.atWarn()
                         .addKeyValue("event.action", "ACCESS_DENIED")
                         .addKeyValue("event.outcome", "failure")
-                        .addKeyValue("client.ip", request.getRemoteAddr())
+                        .addKeyValue("client.ip", clientIp.of(request))
                         .addKeyValue("url.path", request.getRequestURI())
                         .addKeyValue("error.type", exception.getClass().getSimpleName())
                         .log("access denied");

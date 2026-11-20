@@ -1,5 +1,6 @@
 package com.jianheng.emp.web.logging;
 
+import com.jianheng.emp.web.ClientIp;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -11,8 +12,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 public class LoggingConfiguration {
     @Bean
-    RequestLoggingFilter requestLoggingFilter(@Value("${EMP_LOG_SLOW_REQUEST_MS:1000}") long slowRequestMs) {
-        return new RequestLoggingFilter(slowRequestMs);
+    RequestLoggingFilter requestLoggingFilter(@Value("${EMP_LOG_SLOW_REQUEST_MS:1000}") long slowRequestMs,
+                                              ClientIp clientIp) {
+        return new RequestLoggingFilter(slowRequestMs, clientIp);
     }
 
     @Bean

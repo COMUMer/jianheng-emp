@@ -7,12 +7,16 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 邮件验证码：6 位字母数字，10 分钟内有效，单次使用，失败 5 次作废。 */
 @Service
 class VerificationCodeService {
+    private static final Logger log = LoggerFactory.getLogger(VerificationCodeService.class);
+
     enum Purpose { CHANGE_PASSWORD, RESET_PASSWORD }
 
     /** 发送结果：只有真正交给邮件服务的验证码才算 `SENT`，其余情况调用方不得提示「已发送」。 */
@@ -56,6 +60,13 @@ class VerificationCodeService {
         var code = randomCode();
         mapper.insert(employeeId, purpose.name(), hash(employeeId, code), now.plusSeconds(TTL_SECONDS));
         mailer.sendVerificationCode(email, code, TTL_SECONDS / 60);
+        log.atInfo()
+            .addKeyValue("event.action", "VERIFICATION_CODE_ISSUED")
+            .addKeyValue("event.outcome", "success")
+            .addKeyValue("code.purpose", purpose.name())
+            .addKeyValue("code.ttl_seconds", TTL_SECONDS)
+            .addKeyValue("mail.recipient", MailAddresses.mask(email))
+            .log("verification code issued");
         return new Issued(Outcome.SENT, RESEND_COOLDOWN_SECONDS);
     }
 

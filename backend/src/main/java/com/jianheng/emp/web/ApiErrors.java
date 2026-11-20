@@ -35,6 +35,7 @@ class ApiErrors {
             case 404 -> "记录不存在或不可访问";
             default -> "无法完成此操作";
         } : error.getReason();
+        rejected(error.getStatusCode().value(), reason, error);
         return ResponseEntity.status(error.getStatusCode()).body(Map.of("message", reason));
     }
     @ExceptionHandler({IllegalArgumentException.class, MethodArgumentNotValidException.class})
@@ -42,11 +43,14 @@ class ApiErrors {
     Map<String, String> invalid(Exception error) {
         String message = error instanceof MethodArgumentNotValidException validation
             ? validation.getBindingResult().getFieldErrors().getFirst().getDefaultMessage() : error.getMessage();
-        return Map.of("message", message == null ? "请检查填写内容" : message);
+        String reason = message == null ? "请检查填写内容" : message;
+        rejected(HttpStatus.BAD_REQUEST.value(), reason, error);
+        return Map.of("message", reason);
     }
 
     @ExceptionHandler(VerificationCodeThrottled.class)
     ResponseEntity<Map<String, Object>> throttled(VerificationCodeThrottled error) {
+        rejected(HttpStatus.TOO_MANY_REQUESTS.value(), error.getMessage(), error);
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
             .header("Retry-After", Long.toString(error.retryAfterSeconds()))
             .body(Map.of("message", error.getMessage(), "retryAfterSeconds", error.retryAfterSeconds()));
@@ -61,6 +65,7 @@ class ApiErrors {
     @ExceptionHandler(EmployeeConflict.class)
     @ResponseStatus(HttpStatus.CONFLICT)
     Map<String, Object> employeeConflict(EmployeeConflict error) {
+        rejected(HttpStatus.CONFLICT.value(), error.getMessage(), error);
         var body = new LinkedHashMap<String, Object>();
         body.put("message", error.getMessage());
         body.put("employeeId", error.employeeId());
@@ -71,8 +76,10 @@ class ApiErrors {
 
     @ExceptionHandler(DuplicateKeyException.class)
     @ResponseStatus(HttpStatus.CONFLICT)
-    Map<String, String> duplicate() {
-        return Map.of("message", "记录已存在，请检查编号、名称或身份证号");
+    Map<String, String> duplicate(DuplicateKeyException error) {
+        String reason = "记录已存在，请检查编号、名称或身份证号";
+        rejected(HttpStatus.CONFLICT.value(), reason, error);
+        return Map.of("message", reason);
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
@@ -112,6 +119,17 @@ class ApiErrors {
     @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
     Map<String, String> methodNotAllowed() {
         return Map.of("message", "请求方式不正确");
+    }
+
+    /** 业务拒绝也留痕：只记状态码、异常类型和服务端给出的原因，不记录请求体里的敏感值。 */
+    private static void rejected(int status, String reason, Throwable error) {
+        log.atWarn()
+            .addKeyValue("event.action", "REQUEST_REJECTED")
+            .addKeyValue("event.outcome", "failure")
+            .addKeyValue("http.response.status_code", status)
+            .addKeyValue("error.type", error.getClass().getSimpleName())
+            .addKeyValue("error.message", reason)
+            .log("request rejected");
     }
 
     @ExceptionHandler(Exception.class)

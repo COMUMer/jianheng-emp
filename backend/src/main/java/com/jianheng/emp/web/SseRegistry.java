@@ -29,7 +29,10 @@ class SseRegistry {
 
     private record Stream(long accountId, SseEmitter emitter) {}
 
+    private static final long DROP_LOG_INTERVAL_MS = 60_000;
+
     private final Map<Long, Set<Stream>> streams = new ConcurrentHashMap<>();
+    private final Map<Long, Long> lastDropLogAt = new ConcurrentHashMap<>();
     private final ScheduledExecutorService heartbeats = Executors.newSingleThreadScheduledExecutor(SseRegistry::daemon);
     private final ExecutorService deliveries = Executors.newFixedThreadPool(2, SseRegistry::daemon);
 
@@ -68,8 +71,17 @@ class SseRegistry {
         try {
             stream.emitter().send(event);
         } catch (IOException | RuntimeException error) {
-            log.debug("SSE 推送失败，剔除连接 account={}", stream.accountId(), error);
             unregister(stream);
+            long now = System.currentTimeMillis();
+            Long previous = lastDropLogAt.put(stream.accountId(), now);
+            if (previous == null || now - previous >= DROP_LOG_INTERVAL_MS) {
+                log.atWarn()
+                    .addKeyValue("event.action", "SSE_STREAM_DROPPED")
+                    .addKeyValue("event.outcome", "failure")
+                    .addKeyValue("account.id", stream.accountId())
+                    .addKeyValue("error.type", error.getClass().getSimpleName())
+                    .log("dropped sse stream");
+            }
         }
     }
 

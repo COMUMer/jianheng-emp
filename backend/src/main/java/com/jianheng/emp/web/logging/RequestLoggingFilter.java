@@ -1,5 +1,6 @@
 package com.jianheng.emp.web.logging;
 
+import com.jianheng.emp.web.ClientIp;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,9 +31,11 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
         "token", "code", "password", "newpassword", "confirmpassword", "idcard", "bankcard", "session", "csrf");
     private final long slowRequestMs;
+    private final ClientIp clientIp;
 
-    public RequestLoggingFilter(long slowRequestMs) {
+    public RequestLoggingFilter(long slowRequestMs, ClientIp clientIp) {
         this.slowRequestMs = slowRequestMs;
+        this.clientIp = clientIp;
     }
 
     @Override
@@ -79,7 +82,7 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
             .addKeyValue("event.duration_ms", durationMs)
             .addKeyValue("http.request.content_type", safe(request.getContentType(), 120))
             .addKeyValue("http.request.content_length", Math.max(request.getContentLengthLong(), 0))
-            .addKeyValue("client.ip", clientIp(request))
+            .addKeyValue("client.ip", clientIp.of(request))
             .addKeyValue("user_agent.original", safe(request.getHeader("User-Agent"), 256));
         if (authenticated) {
             event.addKeyValue("user.name", authentication.getName())
@@ -97,14 +100,6 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
     private static String requestId(HttpServletRequest request) {
         String supplied = request.getHeader("X-Request-Id");
         return supplied != null && REQUEST_ID.matcher(supplied).matches() ? supplied : UUID.randomUUID().toString();
-    }
-
-    private static String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return safe(forwarded.split(",", 2)[0].trim(), 64);
-        }
-        return safe(request.getRemoteAddr(), 64);
     }
 
     private static String roles(Authentication authentication) {

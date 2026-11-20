@@ -2,6 +2,7 @@ package com.jianheng.emp.web.logging;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.jianheng.emp.web.ClientIp;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
@@ -10,7 +11,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 class RequestLoggingFilterTest {
-    private final RequestLoggingFilter filter = new RequestLoggingFilter(1000);
+    private final RequestLoggingFilter filter = new RequestLoggingFilter(1000, new ClientIp("CF-Connecting-IP"));
 
     @AfterEach
     void clearMdc() {

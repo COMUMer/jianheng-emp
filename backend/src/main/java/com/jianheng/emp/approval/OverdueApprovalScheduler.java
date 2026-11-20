@@ -19,12 +19,22 @@ class OverdueApprovalScheduler {
 
     @Scheduled(fixedDelayString = "${emp.approval.overdue-sweep:60000}")
     void sweep() {
+        long started = System.nanoTime();
+        int returned = 0;
         for (long taskId : mapper.overdueTaskIds()) {
             try {
                 workflow.returnOverdue(taskId);
+                returned++;
             } catch (RuntimeException error) {
                 log.warn("Could not return overdue approval task {}", taskId, error);
             }
+        }
+        if (returned > 0) {
+            log.atInfo()
+                .addKeyValue("event.action", "APPROVAL_OVERDUE_SWEEP")
+                .addKeyValue("event.duration_ms", (System.nanoTime() - started) / 1_000_000)
+                .addKeyValue("approval.returned", returned)
+                .log("returned overdue approvals");
         }
     }
 }

@@ -49,12 +49,17 @@ final class ResendMailer implements Mailer {
             client.post().contentType(MediaType.APPLICATION_JSON)
                 .body(new Message(content.sender(), List.of(to), content.subject(), content.text(), content.html(), attachments))
                 .retrieve().toBodilessEntity();
+            log.atInfo()
+                .addKeyValue("event.action", "MAIL_VERIFICATION_SENT")
+                .addKeyValue("event.outcome", "success")
+                .addKeyValue("mail.recipient", MailAddresses.mask(to))
+                .log("verification mail accepted");
         } catch (RestClientResponseException error) {
-            log.error("Resend 拒绝发送 to={} status={} body={}", to, error.getStatusCode().value(),
+            log.error("Resend 拒绝发送 to={} status={} body={}", MailAddresses.mask(to), error.getStatusCode().value(),
                 error.getResponseBodyAsString());
             throw new MailDeliveryException(SEND_FAILED, error);
         } catch (RestClientException error) {
-            log.error("Resend 无法连接 to={}", to, error);
+            log.error("Resend 无法连接 to={}", MailAddresses.mask(to), error);
             throw new MailDeliveryException(SEND_FAILED, error);
         }
     }

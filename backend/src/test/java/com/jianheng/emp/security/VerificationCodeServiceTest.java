@@ -1,6 +1,7 @@
 package com.jianheng.emp.security;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -14,13 +15,19 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.HashMap;
+import java.util.Map;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.LoggerFactory;
 
 class VerificationCodeServiceTest {
     private static final long EMPLOYEE = 3;
@@ -45,6 +52,30 @@ class VerificationCodeServiceTest {
         assertTrue(code.getValue().matches("[2-9A-HJ-NP-Z]{6}"), code.getValue());
         long ttl = Duration.between(LocalDateTime.now(), expiresAt.getValue()).toSeconds();
         assertTrue(ttl >= VerificationCodeService.TTL_SECONDS - 2 && ttl <= VerificationCodeService.TTL_SECONDS, "" + ttl);
+    }
+
+    @Test
+    void logsTheIssuedCodeWithoutTheCodeItself() {
+        var appender = new ListAppender<ILoggingEvent>();
+        appender.start();
+        var logger = (Logger) LoggerFactory.getLogger(VerificationCodeService.class);
+        logger.addAppender(appender);
+        try {
+            service.issue(EMPLOYEE, PURPOSE, EMAIL);
+
+            assertEquals(1, appender.list.size());
+            var event = appender.list.getFirst();
+            Map<String, Object> values = new HashMap<>();
+            event.getKeyValuePairs().forEach(pair -> values.put(pair.key, pair.value));
+            assertEquals("VERIFICATION_CODE_ISSUED", values.get("event.action"));
+            assertEquals("CHANGE_PASSWORD", values.get("code.purpose"));
+            assertEquals("e***@example.com", values.get("mail.recipient"));
+            var sent = ArgumentCaptor.forClass(String.class);
+            verify(mailer).sendVerificationCode(eq(EMAIL), sent.capture(), eq(10L));
+            assertFalse((event.getFormattedMessage() + values).contains(sent.getValue()));
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test
