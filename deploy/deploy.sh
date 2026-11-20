@@ -25,19 +25,19 @@ else
   echo "==> 数据库未运行，跳过备份"
 fi
 
-echo "==> 拉取 ${TAG}"
-# 镜像名以 compose 文件为唯一来源。
-IMAGE="$(docker compose config --images | grep '/jianheng-emp-server:')"
-IMAGE="${IMAGE%:*}"
-# 服务器到 ghcr.io 的大文件传输会被限速到近乎停滞，默认经加速源转取；失败则回退官方源。
+echo "==> 拉取镜像"
+# 服务器到 ghcr.io 的大文件传输会被限速到近乎停滞，全部镜像经加速源转取，失败则回退官方源。
 MIRROR="${GHCR_MIRROR:-ghcr.nju.edu.cn}"
-if docker pull -q "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}"; then
-  docker tag "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}" "${IMAGE}:${TAG}"
-  # 加速源的名字只是拉取时的临时别名，去掉以免同名镜像堆积。
-  docker rmi "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}" >/dev/null 2>&1 || true
-else
-  IMAGE_TAG="${TAG}" docker compose pull backend
-fi
+for ref in $(IMAGE_TAG="${TAG}" docker compose config --images); do
+  case "${ref}" in */jianheng-emp-server:*) IMAGE="${ref%:*}" ;; esac
+  if docker pull -q "${MIRROR}/${ref#ghcr.io/}" >/dev/null; then
+    docker tag "${MIRROR}/${ref#ghcr.io/}" "${ref}"
+    # 加速源的名字只是拉取时的临时别名，去掉以免同名镜像堆积。
+    docker rmi "${MIRROR}/${ref#ghcr.io/}" >/dev/null 2>&1 || true
+  else
+    docker pull -q "${ref}"
+  fi
+done
 
 if [ -f .current ]; then
   echo "==> 切换后端容器"
