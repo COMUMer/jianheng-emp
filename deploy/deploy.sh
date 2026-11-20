@@ -26,8 +26,16 @@ else
 fi
 
 echo "==> 拉取 ${TAG}"
-# 拉取失败时线上容器不受影响，脚本在这里退出。
-IMAGE_TAG="${TAG}" docker compose pull backend
+# 镜像名以 compose 文件为唯一来源。
+IMAGE="$(docker compose config --images | grep '/jianheng-emp-server:')"
+IMAGE="${IMAGE%:*}"
+# 服务器到 ghcr.io 的大文件传输会被限速到近乎停滞，默认经加速源转取；失败则回退官方源。
+MIRROR="${GHCR_MIRROR:-ghcr.nju.edu.cn}"
+if docker pull -q "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}"; then
+  docker tag "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}" "${IMAGE}:${TAG}"
+else
+  IMAGE_TAG="${TAG}" docker compose pull backend
+fi
 
 if [ -f .current ]; then
   echo "==> 切换后端容器"
