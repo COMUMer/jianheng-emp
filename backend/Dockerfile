@@ -10,11 +10,12 @@ RUN ./mvnw -B -DskipTests package
 # 运行阶段：只含 JRE 与 jar。应用用户固定 uid 1000，与宿主机部署账号一致，
 # 这样挂进容器的配置文件可以保持 600 权限而不需要提权。
 FROM eclipse-temurin:25-jre
-RUN useradd --uid 1000 --user-group --home-dir /app --create-home --shell /usr/sbin/nologin app \
-    && mkdir -p /data/uploads /data/logs \
-    && chown -R app:app /data
-COPY --chown=app:app --from=build /src/target/jh-emp-*.jar /app/app.jar
-USER app
+# 基础镜像自带 uid 1000 的账户，直接复用，不再新建同名用户。
+# uid 必须固定为 1000，与宿主机挂载目录和配置文件的属主一致。
+RUN mkdir -p /app /data/uploads /data/logs \
+    && chown -R 1000:1000 /app /data
+COPY --chown=1000:1000 --from=build /src/target/jh-emp-*.jar /app/app.jar
+USER 1000:1000
 WORKDIR /app
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
