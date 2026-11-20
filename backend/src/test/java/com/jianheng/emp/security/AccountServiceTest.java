@@ -50,6 +50,44 @@ class AccountServiceTest {
     }
 
     @Test
+    void createsTheConfiguredAdminWhenItIsMissing() {
+        when(mapper.byUsername("系统")).thenReturn(mock(AccountMapper.Account.class));
+        when(mapper.byUsername("admin")).thenReturn(null,
+            new AccountMapper.Account(1, "admin", "hash", null, null, null, null, true, null, null, null, null));
+        var encoder = mock(PasswordEncoder.class);
+        when(encoder.encode("initial-pass")).thenReturn("$2hash");
+        var bootstrap = new AccountService(mapper, mock(AuditMapper.class), encoder, TestPii.CIPHER,
+            mock(JdbcIndexedSessionRepository.class), "admin", "initial-pass");
+
+        bootstrap.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        verify(mapper).insert("admin", "$2hash", null);
+        verify(mapper).addRole(1L, Role.ADMIN);
+    }
+
+    @Test
+    void keepsTheConfiguredAdminWhenItAlreadyExists() {
+        when(mapper.byUsername("系统")).thenReturn(mock(AccountMapper.Account.class));
+        when(mapper.byUsername("admin"))
+            .thenReturn(new AccountMapper.Account(1, "admin", "hash", null, null, null, null, true, null, null, null, null));
+        var bootstrap = new AccountService(mapper, mock(AuditMapper.class), mock(PasswordEncoder.class),
+            TestPii.CIPHER, mock(JdbcIndexedSessionRepository.class), "admin", "initial-pass");
+
+        bootstrap.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        verify(mapper, never()).insert(anyString(), anyString(), any());
+    }
+
+    @Test
+    void skipsTheAdminWhenNoPasswordIsConfigured() {
+        when(mapper.byUsername("系统")).thenReturn(mock(AccountMapper.Account.class));
+
+        service.run(mock(org.springframework.boot.ApplicationArguments.class));
+
+        verify(mapper, never()).insert(anyString(), anyString(), any());
+    }
+
+    @Test
     void keepsTheSystemAccountWhenItAlreadyExists() {
         when(mapper.byUsername("系统")).thenReturn(mock(AccountMapper.Account.class));
 

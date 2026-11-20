@@ -92,7 +92,4 @@ public interface AccountMapper {
     void insertDisabled(String username, String hash);
     @Select("SELECT id_card FROM employee WHERE id = #{id}")
     String employeeIdCard(long id);
-
-    @Select("SELECT COUNT(*) FROM account")
-    int count();
 }

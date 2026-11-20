@@ -28,7 +28,7 @@ npm.cmd run dev -- --host 127.0.0.1 --port 5175 --strictPort
 
 后端日志统一写入 `${EMP_LOG_DIR}/backend.log`，单文件 JSON Lines（ECS），默认最多保留 60 天、单文件 100MB、总量 10GB。`EMP_LOG_DIR` 未设置时使用 `./data/logs`；生产可将 `EMP_LOG_DIR` 指向持久卷，例如 `/var/log/jh-emp`。启动日志会打印解析后的路径，HTTP 请求、登录、401/403、业务拒绝（4xx 带 `error.type` 与服务端原因）、异常和慢请求都写入同一文件，按 `request.id` 和 `trace.id` 关联。业务事实（谁在何时改了什么）另记 `audit_event` 表，在「系统设置 → 操作审计」查询，见 [AuditMapper.java](backend/src/main/java/com/jianheng/emp/web/AuditMapper.java)。
 
-打开 Vite 终端输出的本地地址。开发账号由 [Flyway 开发迁移](backend/src/main/resources/db/dev/V3__seed_development_accounts.sql) 创建，账号与初始密码相同。生产在账号表为空时用 `EMP_ADMIN_USER` 和 `EMP_ADMIN_PASSWORD` 初始化管理员，密码至少 10 个字符。启动参数见 [`application.yml`](backend/src/main/resources/application.yml)，本地 API 代理见 [`vite.config.ts`](frontend/vite.config.ts)。
+打开 Vite 终端输出的本地地址。开发账号由 [Flyway 开发迁移](backend/src/main/resources/db/dev/V3__seed_development_accounts.sql) 创建，账号与初始密码相同。生产在 `EMP_ADMIN_USER` 指定的账号不存在时用 `EMP_ADMIN_PASSWORD` 创建管理员，密码规则见 [`AccountService`](backend/src/main/java/com/jianheng/emp/security/AccountService.java)。启动参数见 [`application.yml`](backend/src/main/resources/application.yml)，本地 API 代理见 [`vite.config.ts`](frontend/vite.config.ts)。
 
 首次配置依次在「人员管理」创建部门、岗位和员工，在员工档案中开通账号并授权，再为部门设置负责人。在「系统设置 → 审批规则」发布请假、出差、采购及报销模板。报销模板需要必经的财务审核节点，付款登记需要单独授权。
 

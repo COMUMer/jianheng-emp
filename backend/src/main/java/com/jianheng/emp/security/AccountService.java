@@ -57,11 +57,12 @@ public class AccountService implements UserDetailsService, ApplicationRunner {
         this.adminPassword = adminPassword;
     }
 
+    /** 配置的初始管理员不存在时创建；已存在则不改动，避免覆盖后来修改的密码。 */
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
         ensureSystemAccount();
-        if (mapper.count() != 0 || adminPassword.isBlank()) return;
+        if (adminPassword.isBlank() || mapper.byUsername(adminUsername) != null) return;
         validateCredentials(adminUsername, adminPassword);
         mapper.insert(adminUsername, passwords.encode(adminPassword), null);
         mapper.addRole(mapper.byUsername(adminUsername).id(), Role.ADMIN);
