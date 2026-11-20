@@ -33,6 +33,8 @@ IMAGE="${IMAGE%:*}"
 MIRROR="${GHCR_MIRROR:-ghcr.nju.edu.cn}"
 if docker pull -q "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}"; then
   docker tag "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}" "${IMAGE}:${TAG}"
+  # 加速源的名字只是拉取时的临时别名，去掉以免同名镜像堆积。
+  docker rmi "${MIRROR}/${IMAGE#ghcr.io/}:${TAG}" >/dev/null 2>&1 || true
 else
   IMAGE_TAG="${TAG}" docker compose pull backend
 fi
@@ -49,6 +51,8 @@ echo "==> 健康检查"
 for attempt in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:8080/api/health 2>/dev/null | grep -q '"status":"UP"'; then
     printf '%s\n' "${TAG}" > .current
+    # 本地 latest 跟随线上版本，避免它长期指向过期镜像。
+    docker tag "${IMAGE}:${TAG}" "${IMAGE}:latest"
     # 只保留当前与上一个版本的镜像，历史版本不再占磁盘。
     for tag in $(docker images --filter=reference="${IMAGE}" --format '{{.Tag}}'); do
       case "${tag}" in
