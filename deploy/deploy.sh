@@ -12,7 +12,12 @@ PREVIOUS="$(cat .current 2>/dev/null || true)"
 export IMAGE_TAG="${PREVIOUS:-unknown}"
 
 exec 9>deploy.lock
-flock -n 9 || { echo "另一个发布正在进行" >&2; exit 1; }
+if ! flock -n 9; then
+  echo "!! 另一个发布正在进行，占用进程：" >&2
+  fuser -v deploy.lock >&2 || true
+  echo "!! 确认没有发布进程后执行：fuser -k $(pwd)/deploy.lock" >&2
+  exit 1
+fi
 
 mkdir -p backup
 
@@ -28,14 +33,17 @@ fi
 echo "==> 拉取镜像"
 # 服务器到 ghcr.io 的大文件传输会被限速到近乎停滞，全部镜像经加速源转取，失败则回退官方源。
 MIRROR="${GHCR_MIRROR:-ghcr.nju.edu.cn}"
+# 单个镜像的拉取上限，防止网络卡住时长时间占用发布锁。
+PULL_TIMEOUT="${PULL_TIMEOUT:-300}"
 for ref in $(IMAGE_TAG="${TAG}" docker compose config --images); do
   case "${ref}" in */jianheng-emp-server:*) IMAGE="${ref%:*}" ;; esac
-  if docker pull -q "${MIRROR}/${ref#ghcr.io/}" >/dev/null; then
+  if timeout "${PULL_TIMEOUT}" docker pull -q "${MIRROR}/${ref#ghcr.io/}" >/dev/null; then
     docker tag "${MIRROR}/${ref#ghcr.io/}" "${ref}"
     # 加速源的名字只是拉取时的临时别名，去掉以免同名镜像堆积。
     docker rmi "${MIRROR}/${ref#ghcr.io/}" >/dev/null 2>&1 || true
-  else
-    docker pull -q "${ref}"
+  elif ! timeout "${PULL_TIMEOUT}" docker pull -q "${ref}"; then
+    echo "!! ${ref} 拉取失败或超时（${PULL_TIMEOUT} 秒），线上未改动；可手动预拉后重试" >&2
+    exit 1
   fi
 done
 
