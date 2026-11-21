@@ -77,6 +77,11 @@ class AttachmentService {
         return WorkflowService.attachment(mapper.file(id));
     }
 
+    /** 删除已存储的附件文件；文件不存在视为成功。 */
+    void deleteStored(String storageKey) throws IOException {
+        Files.deleteIfExists(root.resolve(storageKey));
+    }
+
     public ResponseEntity<FileSystemResource> download(CurrentUser user, long id) {
         var file = readable(user, id);
         return response(file, path(file), false);

@@ -1,12 +1,12 @@
 # jianheng-emp
 
-企业内部管理平台。[首版实现方案](docs/mvp-design.md) · [部署与交付](docs/deploy.md) · [前端品牌与登录](docs/frontend.md) · [人员档案](docs/people.md)
+企业内部管理平台。[首版实现方案](docs/mvp-design.md) · [部署与交付](docs/deploy.md) · [前端品牌与登录](docs/frontend.md) · [人员档案](docs/people.md) · [社保缴费对账](docs/social-insurance.md) · [资金凭证](docs/cash-voucher.md) · [附件治理](docs/attachments.md)
 
 ## 本地启动
 
 需要 JDK 25、Node.js 24 和 MySQL 8.4。使用 [Maven Wrapper](backend/.mvn/wrapper/maven-wrapper.properties) 构建后端。
 
-在本机 MySQL 创建开发库及应用账号，使用 `utf8mb4`，给该账号授予这个数据库的读写及迁移权限。填写仓库根目录的 `.env.dev`：`DB_URL`、`DB_USER`、`DB_PASSWORD` 指向本地开发库，`SERVER_ADDRESS` 控制本地监听地址，`OPENAPI_ENABLED` 控制 OpenAPI，`EMP_UPLOAD_DIR` 指定附件目录（例如 `C:/data/jh-emp/dev/uploads`，也可用仓库内已忽略的 `backend/uploads`，不存在时会自动创建），`EMP_LOG_DIR` 指定日志目录。配置按 Java Properties 语法填写，值直接写在等号后，字面反斜杠写成 `\\`。
+在本机 MySQL 创建开发库及应用账号，使用 `utf8mb4`，给该账号授予这个数据库的读写及迁移权限。把 [`.env.example`](.env.example) 复制为仓库根目录的 `.env.dev`，填写数据库连接、附件目录（例如 `C:/data/jh-emp/dev/uploads`，也可用仓库内已忽略的 `backend/uploads`，不存在时会自动创建）和日志目录；全部配置项与默认值见该文件。
 
 在能运行 `java -version` 的 PowerShell 窗口中，从仓库根目录启动后端。
 

@@ -2,6 +2,7 @@ package com.jianheng.emp.approval;
 
 import static com.jianheng.emp.approval.WorkflowData.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -165,6 +166,16 @@ class AttachmentServiceTest {
 
         assertEquals(HttpStatus.CONFLICT, error.getStatusCode());
         verify(mapper, never()).updateFileCategory(anyLong(), any());
+    }
+
+    @Test
+    void deletesStoredFileAndIgnoresMissingFile() throws Exception {
+        Files.write(directory.resolve("key"), new byte[] { 1 });
+
+        service().deleteStored("key");
+        service().deleteStored("missing");
+
+        assertFalse(Files.exists(directory.resolve("key")));
     }
 
     private AttachmentService service() { return new AttachmentService(mapper, workflow, directory.toString()); }
