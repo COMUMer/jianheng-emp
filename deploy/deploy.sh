@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 主机侧发布：加锁、备份、切换到目标镜像、健康检查，失败回滚到上一版本。
+# 主机侧发布：加锁、备份、经加速源拉取镜像、切换容器、健康检查，失败回滚到上一版本。
 set -euo pipefail
 umask 077
 
@@ -67,6 +67,7 @@ for attempt in $(seq 1 30); do
   fi
   sleep 2
 done
+
 
 echo "!! 健康检查失败，回滚" >&2
 docker compose logs --tail=50 backend >&2 || true
