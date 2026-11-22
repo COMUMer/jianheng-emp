@@ -56,7 +56,8 @@ services:
       TZ: Asia/Shanghai
       # token 走环境变量而不是命令行，避免出现在 docker inspect 的参数里。
       TUNNEL_TOKEN: ${TUNNEL_TOKEN}
-    command: tunnel --no-autoupdate run
+    # 默认的 QUIC 在长途链路上行只有 36 KB/s，改 HTTP/2 后实测提升到 148 KB/s。
+    command: tunnel --no-autoupdate --protocol http2 run
     depends_on:
       - backend
     mem_limit: 128m
