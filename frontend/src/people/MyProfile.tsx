@@ -1,8 +1,9 @@
 import { App, Button } from 'antd';
 import { useEffect, useState } from 'react';
-import { api, showError } from '../api';
+import { showError, upload } from '../api';
 import type { Model } from '../api';
 import { EmptyState, PageHeading, ResourceState } from '../common';
+import { UploadProgress } from '../UploadProgress';
 import { useResource } from '../useResource';
 import { AvatarCropModal } from './AvatarCropModal';
 import { departmentPath } from './departments';
@@ -18,6 +19,7 @@ export function MyProfile({ user, onAvatarChanged }: {
     const detail = useResource<Model<'EmployeeDetail'>>(path);
     const departments = useResource<Model<'Department'>[]>('/people/departments');
     const [uploading, setUploading] = useState(false);
+    const [avatarPercent, setAvatarPercent] = useState(0);
     const [cropImage, setCropImage] = useState<string>();
     const [changingPassword, setChangingPassword] = useState(false);
     const profile = detail.data?.employee;
@@ -32,16 +34,18 @@ export function MyProfile({ user, onAvatarChanged }: {
 
     async function uploadAvatar(file: File) {
         setUploading(true);
+        setAvatarPercent(0);
         try {
             const body = new FormData();
             body.append('file', file);
-            const saved = await api<Model<'AvatarView'>>('/people/me/avatar', { method: 'POST', body });
+            const saved = await upload<Model<'AvatarView'>>('/people/me/avatar', body,
+                { onProgress: setAvatarPercent });
             if (saved.avatarKey) onAvatarChanged?.(saved.avatarKey);
             setCropImage(undefined);
             detail.reload();
             message.success('头像已更新');
         } catch (error) { message.error(showError(error)); }
-        finally { setUploading(false); }
+        finally { setUploading(false); setAvatarPercent(0); }
     }
 
     return <>
@@ -55,6 +59,7 @@ export function MyProfile({ user, onAvatarChanged }: {
                     manageAccount={false} editable={false} busy={false}
                     avatarBusy={uploading} onChangeAvatar={chooseAvatar}
                     departmentPath={departmentPath(departments.data, profile.departmentId)} />
+                {uploading && <UploadProgress percent={avatarPercent} label="正在上传头像" />}
             </div>
             : <EmptyState text="未找到员工档案" />}</ResourceState>
         <PasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />

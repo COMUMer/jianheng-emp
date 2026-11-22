@@ -5,21 +5,26 @@ export class ApiError extends Error {
     constructor(public readonly status: number, message: string, public readonly details?: Record<string, unknown>) { super(message); }
 }
 
+type ErrorPayload = ({ message?: string } & Record<string, unknown>) | null;
+
+function httpError(status: number, payload: ErrorPayload): ApiError {
+    const serverMessage = typeof payload?.message === 'string' ? payload.message.trim() : '';
+    const fallback = status === 401 ? '登录已失效，请重新登录'
+        : status === 403 ? '你没有权限执行此操作'
+        : status === 404 ? '请求的内容不存在或已被删除'
+        : status === 413 ? '文件超过大小限制，请压缩后重试'
+        : status === 429 ? '操作过于频繁，请稍后重试'
+        : status >= 500 ? '服务器处理失败，请稍后重试'
+        : status >= 400 ? '请求未能完成，请刷新后重试'
+        : '请求未能完成，请稍后重试';
+    return new ApiError(status, serverMessage || fallback, payload ?? undefined);
+}
+
 async function request(path: string, options: RequestInit = {}, reportExpired = true) {
     const response = await fetch(`/api${path}`, options);
     if (!response.ok) {
         if (reportExpired && response.status === 401) window.dispatchEvent(new Event('session-expired'));
-        const payload = await response.json().catch(() => null) as ({ message?: string } & Record<string, unknown>) | null;
-        const serverMessage = typeof payload?.message === 'string' ? payload.message.trim() : '';
-        const fallback = response.status === 401 ? '登录已失效，请重新登录'
-            : response.status === 403 ? '你没有权限执行此操作'
-            : response.status === 404 ? '请求的内容不存在或已被删除'
-            : response.status === 413 ? '文件超过大小限制，请压缩后重试'
-            : response.status === 429 ? '操作过于频繁，请稍后重试'
-            : response.status >= 500 ? '服务器处理失败，请稍后重试'
-            : response.status >= 400 ? '请求未能完成，请刷新后重试'
-            : '请求未能完成，请稍后重试';
-        throw new ApiError(response.status, serverMessage || fallback, payload ?? undefined);
+        throw httpError(response.status, await response.json().catch(() => null));
     }
     return response;
 }
@@ -42,6 +47,34 @@ export async function api<T = void>(path: string, options: { method?: string; bo
     const response = await request(path, { method, headers, body });
     const content = await response.text();
     return (content ? JSON.parse(content) : undefined) as T;
+}
+
+export type UploadProgressHandler = (fraction: number) => void;
+
+/** 带进度的表单上传；fetch 读不到上传进度，这里用 XHR。 */
+export function upload<T = void>(path: string, body: FormData,
+    options: { method?: string; onProgress?: UploadProgressHandler } = {}): Promise<T> {
+    return csrfHeaders().then(headers => new Promise<T>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(options.method ?? 'POST', `/api${path}`);
+        for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+        xhr.upload.onprogress = event => {
+            if (event.lengthComputable) options.onProgress?.(event.loaded / event.total);
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve((xhr.responseText ? JSON.parse(xhr.responseText) : undefined) as T); }
+                catch { reject(new Error('服务器返回了无法解析的内容')); }
+                return;
+            }
+            if (xhr.status === 401) window.dispatchEvent(new Event('session-expired'));
+            let payload: ErrorPayload = null;
+            try { payload = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { payload = null; }
+            reject(httpError(xhr.status, payload));
+        };
+        xhr.onerror = () => reject(new TypeError('网络中断'));
+        xhr.send(body);
+    }));
 }
 
 export async function signIn(username: string, password: string) {

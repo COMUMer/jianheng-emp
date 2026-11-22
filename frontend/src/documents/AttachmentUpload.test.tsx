@@ -4,17 +4,19 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { Mock } from 'vitest';
-import { api } from '../api';
+import { api, upload } from '../api';
 import type { Model } from '../api';
 import { AttachmentUpload } from './AttachmentUpload';
 
 vi.mock('../api', () => ({
     api: vi.fn(),
+    upload: vi.fn(),
     showError: (error: unknown) => error instanceof Error ? error.message : '操作失败',
     download: vi.fn(),
 }));
 
 const mockedApi = api as unknown as Mock;
+const mockedUpload = upload as unknown as Mock;
 type Attachment = Model<'Attachment'>;
 type ApiOptions = { method?: string; body?: unknown };
 
@@ -36,20 +38,20 @@ function uploadInput(container: HTMLElement) {
     return container.querySelector('input[type="file"]') as HTMLInputElement;
 }
 
-function selectedFile(options: ApiOptions) {
-    return options.body instanceof FormData ? options.body.get('file') as File : undefined;
+function selectedFile(body: FormData) {
+    return body.get('file') as File;
 }
 
 function uploadsAndCategorization() {
     let sequence = 0;
     const names = new Map<number, string>();
+    mockedUpload.mockImplementation(async (_path: string, body: FormData) => {
+        const file = selectedFile(body);
+        const id = ++sequence;
+        names.set(id, file.name);
+        return { id, originalName: file.name, contentType: 'application/pdf' };
+    });
     mockedApi.mockImplementation(async (path: string, options: ApiOptions = {}) => {
-        if (path === '/attachments') {
-            const file = selectedFile(options)!;
-            const id = ++sequence;
-            names.set(id, file.name);
-            return { id, originalName: file.name, contentType: 'application/pdf' };
-        }
         const match = path.match(/^\/attachments\/(\d+)$/);
         if (match) {
             const id = Number(match[1]);
@@ -60,7 +62,7 @@ function uploadsAndCategorization() {
     });
 }
 
-beforeEach(() => { mockedApi.mockReset(); });
+beforeEach(() => { mockedApi.mockReset(); mockedUpload.mockReset(); });
 
 test('uploads files without a category and requires a choice per file', async () => {
     uploadsAndCategorization();
@@ -70,7 +72,7 @@ test('uploads files without a category and requires a choice per file', async ()
 
     await screen.findByText('a.pdf');
     await screen.findByText('b.pdf');
-    expect(mockedApi.mock.calls.map(([path]) => path)).toEqual(['/attachments', '/attachments']);
+    expect(mockedUpload.mock.calls.map(([path]) => path)).toEqual(['/attachments', '/attachments']);
     expect(screen.getAllByRole('combobox')).toHaveLength(2);
     expect(screen.getAllByText('请选择类型')).toHaveLength(2);
     expect(screen.getByTestId('count').textContent).toBe('2');
@@ -93,8 +95,8 @@ test('assigns a category to a single file', async () => {
 });
 
 test('saves a fixed category upload without asking for a type', async () => {
-    mockedApi.mockImplementation(async (path: string, options: ApiOptions = {}) => {
-        const file = selectedFile(options)!;
+    mockedUpload.mockImplementation(async (path: string, body: FormData) => {
+        const file = selectedFile(body);
         if (path !== '/attachments?category=PAYMENT') throw new Error(`Unexpected request: ${path}`);
         return { id: 1, originalName: file.name, contentType: 'application/pdf', category: 'PAYMENT' };
     });
@@ -103,15 +105,15 @@ test('saves a fixed category upload without asking for a type', async () => {
     fireEvent.change(uploadInput(container), { target: { files: [new File(['a'], 'proof.pdf', { type: 'application/pdf' })] } });
 
     expect(await screen.findByText('proof.pdf')).toBeTruthy();
-    expect(mockedApi).toHaveBeenCalledWith('/attachments?category=PAYMENT', { method: 'POST', body: expect.any(FormData) });
+    expect(mockedUpload).toHaveBeenCalledWith('/attachments?category=PAYMENT', expect.any(FormData), expect.any(Object));
     expect(screen.getByText('附件将按付款记录保存。')).toBeTruthy();
     expect(screen.getByText('付款记录')).toBeTruthy();
     expect(screen.queryByRole('combobox')).toBeNull();
 });
 
 test('keeps successful uploads and reports a failed file', async () => {
-    mockedApi.mockImplementation(async (_path: string, options: ApiOptions = {}) => {
-        const file = selectedFile(options)!;
+    mockedUpload.mockImplementation(async (_path: string, body: FormData) => {
+        const file = selectedFile(body);
         if (file.name === 'b.pdf') throw new Error('上传失败');
         return { id: 1, originalName: file.name, contentType: 'application/pdf' };
     });
@@ -132,7 +134,7 @@ test('rejects files over the size limit before uploading', async () => {
     fireEvent.change(uploadInput(container), { target: { files: [file] } });
 
     expect(await screen.findByText('big.pdf 超过 50MB，无法上传')).toBeTruthy();
-    expect(mockedApi).not.toHaveBeenCalled();
+    expect(mockedUpload).not.toHaveBeenCalled();
 });
 
 test('previews a PDF attachment', async () => {

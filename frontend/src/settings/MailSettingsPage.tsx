@@ -5,9 +5,10 @@ import StarterKit from '@tiptap/starter-kit';
 import { Alert, App, Button, Dropdown, Form, Input, Tag } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, showError } from '../api';
+import { api, showError, upload } from '../api';
 import type { Model } from '../api';
 import { PageHeading, ResourceState } from '../common';
+import { UploadProgress } from '../UploadProgress';
 import { formatDate } from '../format';
 import { LeaveConfirmModal, reloadTarget, useLeaveGuard } from '../leaveGuard';
 import { useResource } from '../useResource';
@@ -126,6 +127,7 @@ function MailSettingsEditor({ settings, reload }: { settings: Settings; reload: 
     const [form] = Form.useForm<Values>();
     const [saving, setSaving] = useState(false);
     const [sending, setSending] = useState(false);
+    const [uploadPercent, setUploadPercent] = useState(0);
     const [dirty, setDirty] = useState(false);
     const [leaveTo, setLeaveTo] = useState<string | null>(null);
     const navigate = useNavigate();
@@ -224,12 +226,13 @@ function MailSettingsEditor({ settings, reload }: { settings: Settings; reload: 
         });
         data.append('settings', new Blob([JSON.stringify({ sender: values.sender, subject: values.subject, html })],
             { type: 'application/json' }));
-        await api('/mail-settings', { method: 'PUT', body: data });
+        await upload('/mail-settings', data, { method: 'PUT', onProgress: setUploadPercent });
         return true;
     }
 
     async function save(values: Values) {
         setSaving(true);
+        setUploadPercent(0);
         try {
             if (!await persist(values)) return;
             setDirty(false);
@@ -239,6 +242,7 @@ function MailSettingsEditor({ settings, reload }: { settings: Settings; reload: 
             message.error(showError(error));
         } finally {
             setSaving(false);
+            setUploadPercent(0);
         }
     }
 
@@ -298,6 +302,7 @@ function MailSettingsEditor({ settings, reload }: { settings: Settings; reload: 
 
     return <>
         <PageHeading title="邮件设置" />
+        {(saving || sending) && uploadPercent > 0 && <UploadProgress percent={uploadPercent} label="正在保存并上传图片" />}
         <div className="mail-settings-status">
             <Tag color={settings.resendConfigured ? 'green' : 'orange'}>
                 Resend {settings.resendConfigured ? '已配置' : '未配置'}

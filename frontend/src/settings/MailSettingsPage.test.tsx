@@ -3,10 +3,14 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { api } from '../api';
+import { api, upload } from '../api';
 import MailSettingsPage from './MailSettingsPage';
 
-vi.mock('../api', async importOriginal => ({ ...await importOriginal<typeof import('../api')>(), api: vi.fn() }));
+vi.mock('../api', async importOriginal => ({
+    ...await importOriginal<typeof import('../api')>(),
+    api: vi.fn(),
+    upload: vi.fn(),
+}));
 
 const settings = {
     sender: '见衡科技 <no-reply@notify.jianheng.comum.cn>',
@@ -17,9 +21,13 @@ const settings = {
 
 test('edits one visual body, previews uploads, and saves the referenced image with the template', async () => {
     let saved: FormData | undefined;
-    vi.mocked(api).mockImplementation(async (path, options) => {
+    vi.mocked(upload).mockImplementation(async (path, body) => {
         if (path !== '/mail-settings') throw new Error('Unexpected request: ' + path);
-        if (options?.method === 'PUT') saved = options.body as FormData;
+        saved = body;
+        return settings as never;
+    });
+    vi.mocked(api).mockImplementation(async path => {
+        if (path !== '/mail-settings') throw new Error('Unexpected request: ' + path);
         return settings as never;
     });
     const user = userEvent.setup();
@@ -94,6 +102,7 @@ test('edits one visual body, previews uploads, and saves the referenced image wi
 });
 test('saves the draft and sends a test email to the entered recipient', async () => {
     let testedTo: string | undefined;
+    vi.mocked(upload).mockImplementation(async () => settings as never);
     vi.mocked(api).mockImplementation(async (path, options) => {
         if (path === '/mail-settings') return settings as never;
         if (path === '/mail-settings/test') {

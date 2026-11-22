@@ -2,9 +2,10 @@ import { FolderOutlined } from '@ant-design/icons';
 import { App, Button, Select, Tag, Upload } from 'antd';
 import type { Dispatch, SetStateAction } from 'react';
 import { useEffect, useState } from 'react';
-import { api, showError } from '../api';
+import { api, showError, upload as uploadFile } from '../api';
 import type { Model } from '../api';
 import { fileCategoryColor, fileCategoryLabel } from '../format';
+import { UploadProgress } from '../UploadProgress';
 import { AttachmentPreview } from './AttachmentPreview';
 
 type Attachment = Model<'Attachment'>;
@@ -22,10 +23,10 @@ export function AttachmentUpload({ files, onChange, kind, category, disabled, on
     showHint?: boolean;
 }) {
     const { message } = App.useApp();
-    const [progress, setProgress] = useState({ done: 0, total: 0 });
+    const [progress, setProgress] = useState<{ name: string; index: number; total: number; percent: number }>();
     const [saving, setSaving] = useState<Record<number, boolean>>({});
     const [preview, setPreview] = useState<Attachment>();
-    const uploading = progress.total > 0;
+    const uploading = progress !== undefined;
     const busy = uploading || Object.keys(saving).length > 0;
     const options: { value: Category; label: string }[] = kind === 'EXPENSE'
         ? [{ value: 'INVOICE', label: '发票' }, { value: 'PAYMENT', label: '付款记录' }, { value: 'OTHER', label: '其他材料' }]
@@ -33,21 +34,23 @@ export function AttachmentUpload({ files, onChange, kind, category, disabled, on
 
     useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
 
-    async function upload(batch: File[]) {
+    async function uploadBatch(batch: File[]) {
         if (!batch.length) return;
-        setProgress({ done: 0, total: batch.length });
+        const path = category ? `/attachments?category=${category}` : '/attachments';
         try {
             for (const [index, file] of batch.entries()) {
                 const body = new FormData();
                 body.append('file', file);
-                setProgress({ done: index + 1, total: batch.length });
+                const step = { name: file.name, index: index + 1, total: batch.length, percent: 0 };
+                setProgress(step);
                 try {
-                    const attachment = await api<Attachment>(category ? `/attachments?category=${category}` : '/attachments',
-                        { method: 'POST', body });
+                    const attachment = await uploadFile<Attachment>(path, body, {
+                        onProgress: percent => setProgress({ ...step, percent }),
+                    });
                     onChange(current => [...current, attachment]);
                 } catch (error) { message.error(file.name + '：' + showError(error)); }
             }
-        } finally { setProgress({ done: 0, total: 0 }); }
+        } finally { setProgress(undefined); }
     }
 
     async function categorize(file: Attachment, category: Category) {
@@ -82,7 +85,7 @@ export function AttachmentUpload({ files, onChange, kind, category, disabled, on
                         message.error(`${item.name} 超过 ${MAX_ATTACHMENT_MB}MB，无法上传`);
                         return false;
                     });
-                    if (accepted.length) void upload(accepted);
+                    if (accepted.length) void uploadBatch(accepted);
                 }
                 return Upload.LIST_IGNORE;
             }}>
@@ -90,10 +93,13 @@ export function AttachmentUpload({ files, onChange, kind, category, disabled, on
                 <span className="upload-zone-icon" aria-hidden><FolderOutlined /></span>
                 <span className="upload-zone-title">点击或拖拽文件到此区域上传</span>
                 <span className="upload-zone-hint" aria-live="polite">
-                    {uploading ? '正在上传 ' + progress.done + '/' + progress.total + '…' : `支持一次选择多个文件，单个不超过 ${MAX_ATTACHMENT_MB}MB`}
+                    {uploading ? '正在上传 ' + progress.index + '/' + progress.total + '…'
+                        : `支持一次选择多个文件，单个不超过 ${MAX_ATTACHMENT_MB}MB`}
                 </span>
             </div>
         </Upload.Dragger>
+        {progress && <UploadProgress percent={progress.percent}
+            label={`${progress.name}（${progress.index}/${progress.total}）`} />}
         {files.map((file, index) => {
             const id = file.id;
             const filing = id !== undefined && saving[id] === true;
