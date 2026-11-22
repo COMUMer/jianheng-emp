@@ -60,7 +60,7 @@
 
 - 发布串行执行，同一时间只允许一个发布。
 - 镜像仓库保持公开：镜像内不含密钥，主机不需要任何仓库凭据。
-- 前端由 Cloudflare Workers Builds 构建：生产分支 `master`，根目录 `frontend`，构建命令 `npm ci && npm run build`，部署 `npx wrangler deploy`。这是前端唯一发布入口。
+- 前端由 Cloudflare Workers Builds 构建：生产分支 `master`，构建命令 `cd frontend && npm ci && npm run build`，部署 `cd frontend && npx wrangler deploy`。这是前端唯一发布入口。
 - 两条流水线互不等待。接口变更先发布向后兼容的 API，再切换前端，最后移除旧字段。
 
 ## 配置与密钥
@@ -75,18 +75,13 @@
 
 ## 发布、回滚与备份
 
-发布脚本按序执行，任一步失败即中止：
+发布由 [deploy.sh](../deploy/deploy.sh) 完成，依次是加锁、备份、拉取镜像、切换后端容器、健康门禁；失败时用发布前记录的标签重建容器，成功时清理旧镜像与过期备份。任一步失败即中止，线上容器保持运行。
 
-1. `flock` 加锁，阻止并发发布
-2. 用 `install -m 600` 写入 `.env` 与 `.env.prod`
-3. 记录当前运行标签到 `previous.tag`
-4. `mysqldump --single-transaction` 与附件打包写入 `backup/`，失败即退出
-5. `docker compose pull` 目标镜像，标签由命令行传入，不写入 `.env`；拉取失败时线上容器不受影响
-6. `IMAGE_TAG=<标签> docker compose up -d --no-deps backend`
-7. 轮询 `/api/health` 直到 `UP`，超时用 `previous.tag` 重建
-8. 清理旧镜像与超过保留期的备份
+- 锁被占用时脚本打印占用进程与解除命令。单次镜像拉取上限 300 秒（`PULL_TIMEOUT` 可覆盖），避免网络卡死长期占锁。
+- 镜像默认经 `ghcr.nju.edu.cn` 转取后改回官方名字：GHCR 从境内拉大文件会被限速到近乎停滞。加速源不可用时回退官方源。
+- 镜像标签由流水线传入，`.env` 只有一个写入者。
 
-镜像标签由环境变量传入，`.env` 只有一个写入者。**回滚**：`IMAGE_TAG=$(cat previous.tag) docker compose up -d --no-deps backend`，或重跑流水线指定旧标签。只回滚镜像；若该次发布同时改过 `compose.yaml`，需要一并取回上一版配置。
+**回滚**：自动回滚只在单次发布内生效，脚本在改动前记录当时 `.current` 的标签。手动回滚用本地保留的上一个标签：`IMAGE_TAG=sha-xxxxxxx docker compose up -d --no-deps backend`，或重跑流水线指定旧标签。只回滚镜像；若该次发布同时改过 `compose.yaml`，需要一并取回上一版配置。
 
 **迁移**：Flyway 随启动执行，回滚镜像不会回滚数据库结构。迁移遵循先扩展、后收缩，同一版本内不删除已被使用的列。
 
@@ -98,7 +93,7 @@
 2. Cloudflare 创建隧道，公开主机名指向 `http://backend:8080`，token 记入 `ENV_FILE`
 3. 配置 GitHub Secrets：SSH 四项与 `ENV_FILE`、`ENV_PROD`
 4. 用 `workflow_dispatch` 触发首次发布，确认镜像、部署与健康检查
-5. 手工验证一次回滚，确认 `previous.tag` 可用
+5. 手工验证一次回滚，确认本地保留的上一个标签能重建容器
 6. 连接 Cloudflare Workers Builds，推送一次验证前端与 `/api` 转发
 
 ## 验收
@@ -116,7 +111,7 @@
 
 | 风险 | 处理 |
 | --- | --- |
-| GHCR 在境内拉取慢或超时 | 首发实测，超时就同时推送国内镜像仓库 |
+| GHCR 在境内拉取大文件受阻 | 默认经加速源转取，失败回退官方源；两端同时不可用时发布失败、线上继续服务 |
 | 隧道增加一跳延迟 | 用真实网络测首屏与事件流，不可接受则改为主机反向代理与自有证书 |
 | 登录接口无频率限制 | 在 Cloudflare 为 `/api/session/login` 配置限流规则 |
 | 客户端地址依赖受信头 | 统一取 `CF-Connecting-IP`（`emp.http.client-ip-header` 可改），不读 `X-Forwarded-For`；前提是源站不开放入站端口 |
