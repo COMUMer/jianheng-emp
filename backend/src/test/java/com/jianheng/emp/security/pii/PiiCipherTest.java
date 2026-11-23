@@ -36,7 +36,11 @@ class PiiCipherTest {
     @Test
     void rejectsTamperedCiphertext() {
         String stored = cipher.encrypt("11010519491231002X", ID_CARD);
-        String tampered = stored.substring(0, stored.length() - 2) + (stored.endsWith("A") ? "BB" : "AA");
+        int split = stored.indexOf(':') + 1;
+        // 必须改解码后的字节：base64 末尾字符可能落在填充位上，改字符串不一定改到数据。
+        byte[] payload = Base64.getUrlDecoder().decode(stored.substring(split));
+        payload[payload.length - 1] ^= 0x01;
+        String tampered = stored.substring(0, split) + Base64.getUrlEncoder().withoutPadding().encodeToString(payload);
         assertThrows(IllegalStateException.class, () -> cipher.decrypt(tampered, ID_CARD));
     }
 
