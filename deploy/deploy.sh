@@ -8,6 +8,7 @@ cd "$(dirname "$0")"
 TAG="${1:?用法: deploy.sh sha-abc1234}"
 STAMP="$(date +%F-%H%M%S)"
 PREVIOUS="$(cat .current 2>/dev/null || true)"
+echo "==> 发布 ${TAG}（上一版本：${PREVIOUS:-无}）"
 # 备份与日志步骤也会解析 compose 文件，给个占位值避免 "IMAGE_TAG 未设置" 的告警。
 export IMAGE_TAG="${PREVIOUS:-unknown}"
 
@@ -30,20 +31,38 @@ else
   echo "==> 数据库未运行，跳过备份"
 fi
 
-echo "==> 拉取镜像"
-# 服务器到 ghcr.io 的大文件传输会被限速到近乎停滞，全部镜像经加速源转取，失败则回退官方源。
-MIRROR="${GHCR_MIRROR:-ghcr.nju.edu.cn}"
-# 单个镜像的拉取上限，防止网络卡住时长时间占用发布锁。
+# 服务器到 ghcr.io 的大文件传输会被限速到近乎停滞：按顺序尝试加速源，最后回退官方源。
+# 加速源把 ghcr.io/ 前缀换成镜像站域名，例如 ghcr.1ms.run/<owner>/<repo>:<tag>。
+MIRRORS="${GHCR_MIRRORS:-ghcr.nju.edu.cn ghcr.1ms.run ghcr.io}"
+MIRROR_COUNT=$(echo "${MIRRORS}" | wc -w)
+# 单个来源的拉取上限，防止网络卡住时长时间占用发布锁。
 PULL_TIMEOUT="${PULL_TIMEOUT:-300}"
+echo "==> 拉取镜像（顺序：${MIRRORS}，单个来源上限 ${PULL_TIMEOUT} 秒）"
 for ref in $(IMAGE_TAG="${TAG}" docker compose config --images); do
   case "${ref}" in */jianheng-emp-server:*) IMAGE="${ref%:*}" ;; esac
-  if timeout "${PULL_TIMEOUT}" docker pull -q "${MIRROR}/${ref#ghcr.io/}" >/dev/null; then
-    docker tag "${MIRROR}/${ref#ghcr.io/}" "${ref}"
-    # 加速源的名字只是拉取时的临时别名，去掉以免同名镜像堆积。
-    docker rmi "${MIRROR}/${ref#ghcr.io/}" >/dev/null 2>&1 || true
-  elif ! timeout "${PULL_TIMEOUT}" docker pull -q "${ref}"; then
-    echo "!! ${ref} 拉取失败或超时（${PULL_TIMEOUT} 秒），线上未改动；可手动预拉后重试" >&2
+  path="${ref#ghcr.io/}"
+  pulled=""
+  attempt=0
+  echo "   · ${path}"
+  for mirror in ${MIRRORS}; do
+    attempt=$((attempt + 1))
+    if [ "${mirror}" = "ghcr.io" ]; then candidate="${ref}"; else candidate="${mirror}/${path}"; fi
+    started=$(date +%s)
+    if timeout "${PULL_TIMEOUT}" docker pull -q "${candidate}" >/dev/null; then
+      echo "     [${attempt}/${MIRROR_COUNT}] ${mirror} 完成，用时 $(( $(date +%s) - started ))s"
+      pulled="${candidate}"
+      break
+    fi
+    echo "     [${attempt}/${MIRROR_COUNT}] ${mirror} 失败，用时 $(( $(date +%s) - started ))s，换下一个" >&2
+  done
+  if [ -z "${pulled}" ]; then
+    echo "!! ${ref} 拉取失败或超时（每个来源 ${PULL_TIMEOUT} 秒），线上未改动；可手动预拉后重试" >&2
     exit 1
+  fi
+  if [ "${pulled}" != "${ref}" ]; then
+    docker tag "${pulled}" "${ref}"
+    # 加速源的名字只是拉取时的临时别名，去掉以免同名镜像堆积。
+    docker rmi "${pulled}" >/dev/null 2>&1 || true
   fi
 done
 
