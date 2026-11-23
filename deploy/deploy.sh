@@ -33,10 +33,26 @@ fi
 
 # 服务器到 ghcr.io 的大文件传输会被限速到近乎停滞：按顺序尝试加速源，最后回退官方源。
 # 加速源把 ghcr.io/ 前缀换成镜像站域名，例如 ghcr.1ms.run/<owner>/<repo>:<tag>。
-MIRRORS="${GHCR_MIRRORS:-ghcr.nju.edu.cn ghcr.1ms.run ghcr.io}"
+# 1ms 排第一：NJU 对大 layer 经常回源超时，每次都白等一轮；小镜像两者都是秒级。
+MIRRORS="${GHCR_MIRRORS:-ghcr.1ms.run ghcr.nju.edu.cn ghcr.io}"
 MIRROR_COUNT=$(echo "${MIRRORS}" | wc -w)
 # 单个来源的拉取上限，防止网络卡住时长时间占用发布锁。
 PULL_TIMEOUT="${PULL_TIMEOUT:-300}"
+# 后台拉取，前台每 15 秒打点：拉大镜像时日志不会长时间空着，也不额外拖慢结束时间。
+pull_image() {
+  timeout "${PULL_TIMEOUT}" docker pull -q "${1}" >/dev/null &
+  local pid=$! rc=0 waited=0
+  ( while kill -0 "${pid}" 2>/dev/null; do
+      sleep 15
+      waited=$((waited + 15))
+      kill -0 "${pid}" 2>/dev/null && echo "       ... 已等待 ${waited}s"
+    done ) &
+  local heartbeat=$!
+  wait "${pid}" || rc=$?
+  kill "${heartbeat}" 2>/dev/null
+  wait "${heartbeat}" 2>/dev/null || true
+  return "${rc}"
+}
 echo "==> 拉取镜像（顺序：${MIRRORS}，单个来源上限 ${PULL_TIMEOUT} 秒）"
 for ref in $(IMAGE_TAG="${TAG}" docker compose config --images); do
   case "${ref}" in */jianheng-emp-server:*) IMAGE="${ref%:*}" ;; esac
@@ -47,16 +63,17 @@ for ref in $(IMAGE_TAG="${TAG}" docker compose config --images); do
   for mirror in ${MIRRORS}; do
     attempt=$((attempt + 1))
     if [ "${mirror}" = "ghcr.io" ]; then candidate="${ref}"; else candidate="${mirror}/${path}"; fi
+    echo "     [${attempt}/${MIRROR_COUNT}] ${mirror} 开始拉取（最多 ${PULL_TIMEOUT}s）"
     started=$(date +%s)
-    if timeout "${PULL_TIMEOUT}" docker pull -q "${candidate}" >/dev/null; then
+    if pull_image "${candidate}"; then
       echo "     [${attempt}/${MIRROR_COUNT}] ${mirror} 完成，用时 $(( $(date +%s) - started ))s"
       pulled="${candidate}"
       break
     fi
-    echo "     [${attempt}/${MIRROR_COUNT}] ${mirror} 失败，用时 $(( $(date +%s) - started ))s，换下一个" >&2
+    echo "     [${attempt}/${MIRROR_COUNT}] ${mirror} 失败，用时 $(( $(date +%s) - started ))s，换下一个"
   done
   if [ -z "${pulled}" ]; then
-    echo "!! ${ref} 拉取失败或超时（每个来源 ${PULL_TIMEOUT} 秒），线上未改动；可手动预拉后重试" >&2
+    echo "!! ${ref} 拉取失败或超时（每个来源 ${PULL_TIMEOUT} 秒），线上未改动；可手动预拉后重试"
     exit 1
   fi
   if [ "${pulled}" != "${ref}" ]; then
