@@ -222,7 +222,7 @@ h3 { font-size: 15px; font-weight: 650; }
 .work-list .work-open:hover strong { color: var(--brand); }
 .work-list small, .file-row small { color: var(--quiet); }
 .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.detail-round-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.detail-round-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .filter-bar { margin: 8px 0 15px; }
 .filter-bar .ant-select { min-width: 128px; }
 .filter-bar .filter-bar-action { margin-left: auto; }

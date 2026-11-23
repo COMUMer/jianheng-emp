@@ -70,9 +70,9 @@
 | --- | --- |
 | 账号与权限 | 员工查看自己的申请和本人档案，审批人处理分派给自己的任务。员工档案维护、财务审核和付款登记分别授权。 |
 | 审批配置 | 表单字段由各模块定义。审批模板支持串行节点、部门负责人或指定人员、按金额追加审批、替代审批人和发布版本。请假、出差、采购和报销共用审批实例、待办与历史。 |
-| 站内通知 | 任务激活、退回、通过、转派和付款登记产生站内消息。任务激活时按模板配置计算截止日期。工作台按未处理任务的截止日期显示超期提醒。超期任务由系统自动驳回，操作人取启动时自动补齐的禁用账号「系统」（[AccountService.java](../backend/src/main/java/com/jianheng/emp/security/AccountService.java)、[WorkflowService.java](../backend/src/main/java/com/jianheng/emp/approval/WorkflowService.java)）。 |
+| 站内通知 | 任务激活、退回、通过、转派、付款登记与付款附件更正产生站内消息。任务激活时按模板配置计算截止日期。工作台按未处理任务的截止日期显示超期提醒。超期任务由系统自动驳回，操作人取启动时自动补齐的禁用账号「系统」（[AccountService.java](../backend/src/main/java/com/jianheng/emp/security/AccountService.java)、[WorkflowService.java](../backend/src/main/java/com/jianheng/emp/approval/WorkflowService.java)）。 |
 | 附件 | 报销附件分为发票、付款记录和其他材料，上传时不预设类型，每个附件在列表中单独选择；提交前所有附件必须有类型，发票和付款记录必需；采购附件为其他材料，提交前至少一份。费用类别、部门和岗位用 `active` 停用，停用项不进入新选择，历史单据继续引用，仅未被使用的停用记录可删除。图片和 PDF 可按单据权限在线预览，其他格式下载查看。上传与分类见 [AttachmentUpload](../frontend/src/documents/AttachmentUpload.tsx)、[AttachmentService.java](../backend/src/main/java/com/jianheng/emp/approval/AttachmentService.java)；未分类与分类迁移见 [V12](../backend/src/main/resources/db/migration/V12__categorize_expense_attachments.sql) 和 [V13](../backend/src/main/resources/db/migration/V13__allow_uncategorized_files.sql)。预览见 [AttachmentPreview](../frontend/src/documents/AttachmentPreview.tsx)。 |
-| 操作审计 | 记录账号停用、角色修改、审批转派、付款登记和台账导出，保留操作者、时间、对象和必要的变更信息。主数据与单据在表上保存创建时间、编辑时间与操作人（`updated_by` 指向账号），列表直接展示，列定义见各业务模块迁移与列表组件。 |
+| 操作审计 | 记录账号停用、角色修改、审批转派、付款登记、付款附件更正和台账导出，保留操作者、时间、对象和必要的变更信息。主数据与单据在表上保存创建时间、编辑时间与操作人（`updated_by` 指向账号），列表直接展示，列定义见各业务模块迁移与列表组件。 |
 | 导出 | 报销台账按当前权限和页面筛选条件导出。 |
 
 ## 通用审批流程
@@ -87,7 +87,7 @@
 2. **附件校验。** 提交时要求至少一份发票和一份付款记录，其他材料可选。附件分类随上传写入，文件哈希辅助识别相同文件。审批人、财务和管理员按单据权限预览或下载附件。
 **单号规则。** 提交前创建单据时即分配业务单号：类型前缀（QJ/CC/CG/BX）+ 年月 + 当月四位顺序号，如 `BX2026110003`；顺序号由 `document_number` 计数表按「类型 + 年月」原子自增，单号在 `work_document.document_no` 上唯一。历史单据在迁移中按创建月份回填。列表、搜索、详情、导出统一使用该单号。
 
-3. **登记付款。** 报销和采购单据审批通过后进入待付款；打开付款表单前先抢占（`work_document.payment_claim_*`，5 分钟过期或取消即释放），同一单据同时只允许一个付款人录入，其他付款人看到「正由 XX 登记付款」。财务实际付款后录入日期、付款凭证或流水号，并可上传付款凭证附件。付款记录按报销单 ID 做唯一约束，登记全额付款和更新单据状态在同一事务完成。待付款报销单同时进入具有付款角色账号的「待办」，办理入口在单据详情。台账包含单号、申请人、提交时部门、金额、状态和付款信息。
+3. **登记付款。** 报销和采购单据审批通过后进入待付款；打开付款表单前先抢占（`work_document.payment_claim_*`，5 分钟过期或取消即释放），同一单据同时只允许一个付款人录入，其他付款人看到「正由 XX 登记付款」。财务实际付款后录入日期并上传付款凭证附件。付款记录按报销单 ID 做唯一约束，登记全额付款和更新单据状态在同一事务完成。已登记付款后，原付款人可更正付款日期与付款附件，付款人与单据状态不变；财务或管理员可要求付款人更正。被替换的附件按[附件治理](attachments.md)清理。待付款报销单同时进入具有付款角色账号的「待办」，办理入口在单据详情。台账包含单号、申请人、提交时部门、金额、状态和付款信息。
 
 ## 第一阶段实施与验收
 

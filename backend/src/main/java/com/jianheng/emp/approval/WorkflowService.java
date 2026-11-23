@@ -211,24 +211,65 @@ class WorkflowService {
         if (!payable(document.kind()) || document.status() != Status.AWAITING_PAYMENT) throw conflict("该单据当前不可登记付款");
         if (mapper.claimPayment(id, actor.id()) == 0) throw claimedByOther(id);
         if (input.paidOn().isAfter(LocalDate.now())) throw new IllegalArgumentException("付款日期不能晚于今天");
-        if (input.fileIds() == null || input.fileIds().isEmpty()) throw new IllegalArgumentException("请上传付款附件");
-        mapper.addPayment(id, new PaymentInput(input.paidOn(), input.fileIds()), actor.id());
-        var fileIds = input.fileIds();
-        for (long fileId : fileIds.stream().distinct().sorted().toList()) {
-            mapper.lockFile(fileId);
-            var file = mapper.file(fileId);
-            if (file == null || file.uploadedBy() != actor.id()) throw denied();
-            if (file.category() != FileCategory.PAYMENT) throw new IllegalArgumentException("付款附件必须为付款记录");
-            if (!mapper.documentsForFile(fileId).isEmpty() || !mapper.paymentDocumentsForFile(fileId).isEmpty()) {
-                throw new IllegalArgumentException("附件已被其他记录使用");
-            }
-            mapper.addPaymentFile(id, fileId);
-        }
+        var fileIds = paymentFileIds(input.fileIds());
+        mapper.addPayment(id, new PaymentInput(input.paidOn(), fileIds), actor.id());
+        bindPaymentFiles(actor, id, fileIds);
         mapper.changeStatus(id, Status.PAID);
         mapper.releasePayment(id, actor.id());
         mapper.touch(id, actor.id());
         notifier.notify(document.ownerId(), id, actor.id(), subject(document.currentRevisionId()) + "已登记付款");
         audit.record(actor.id(), "PAYMENT_RECORD", id, "已登记付款");
+    }
+
+    /**
+     * 更正付款登记：原付款人可修改付款日期与付款附件，付款人与单据状态都不变。
+     * 被换下的附件解除关联后成为孤儿，由附件清理任务按保留期删除。
+     */
+    @Transactional
+    public void correctPayment(CurrentUser actor, long id, PaymentInput input) {
+        if (!actor.has(Role.PAYER)) throw denied();
+        var document = lock(id);
+        if (!payable(document.kind()) || document.status() != Status.PAID) throw conflict("该单据当前没有已登记的付款");
+        var payment = mapper.payment(id);
+        if (payment == null || !Objects.equals(payment.paidBy(), actor.id())) throw denied();
+        if (input.paidOn().isAfter(LocalDate.now())) throw new IllegalArgumentException("付款日期不能晚于今天");
+        var next = paymentFileIds(input.fileIds());
+        var existing = mapper.paymentFiles(id);
+        boolean dateChanged = !input.paidOn().equals(payment.paidOn());
+        boolean filesChanged = !existing.stream().map(FileRecord::id).sorted().toList().equals(next);
+        if (!dateChanged && !filesChanged) return;
+        var parts = new ArrayList<String>();
+        if (dateChanged) {
+            mapper.updatePaymentDate(id, input.paidOn());
+            parts.add("付款日期 " + payment.paidOn() + " → " + input.paidOn());
+        }
+        if (filesChanged) {
+            mapper.clearPaymentFiles(id);
+            bindPaymentFiles(actor, id, next);
+            var removed = existing.stream().filter(file -> !next.contains(file.id())).map(FileRecord::originalName).toList();
+            if (!removed.isEmpty()) parts.add("移除：" + String.join("、", removed));
+            var kept = existing.stream().map(FileRecord::id).toList();
+            var added = mapper.paymentFiles(id).stream().filter(file -> !kept.contains(file.id()))
+                .map(FileRecord::originalName).toList();
+            if (!added.isEmpty()) parts.add("新增：" + String.join("、", added));
+        }
+        mapper.touch(id, actor.id());
+        audit.record(actor.id(), "PAYMENT_CORRECTION", id, String.join("；", parts));
+        notifier.notify(document.ownerId(), id, actor.id(), subject(document.currentRevisionId()) + "付款登记已更正");
+    }
+
+    /** 财务或管理员要求付款人更正付款登记：只发消息并留痕，不动单据状态与付款记录。 */
+    @Transactional
+    public void requestPaymentFileFix(CurrentUser actor, long id, String reason) {
+        if (!actor.has(Role.FINANCE) && !actor.has(Role.ADMIN)) throw denied();
+        String note = text(reason);
+        if (note.isBlank()) throw new IllegalArgumentException("请填写要求更正的原因");
+        var document = lock(id);
+        if (!payable(document.kind()) || document.status() != Status.PAID) throw conflict("该单据当前没有已登记的付款");
+        Long payer = mapper.paymentPayer(id);
+        if (payer == null) throw conflict("该单据当前没有已登记的付款");
+        notifier.notify(payer, id, actor.id(), subject(document.currentRevisionId()) + "付款登记被要求更正：" + note);
+        audit.record(actor.id(), "PAYMENT_FIX_REQUEST", id, note);
     }
 
     @Transactional
@@ -368,6 +409,26 @@ class WorkflowService {
                     throw new IllegalArgumentException("费用类别已停用，请重新选择");
                 }
             }
+        }
+    }
+
+    /** 付款附件集合的唯一校验入口：非空、去重排序。 */
+    private static List<Long> paymentFileIds(List<Long> fileIds) {
+        if (fileIds == null || fileIds.isEmpty()) throw new IllegalArgumentException("请上传付款附件");
+        return fileIds.stream().distinct().sorted().toList();
+    }
+
+    /** 付款附件的唯一绑定入口：必须本人上传、类型为付款记录、未被其他单据占用。 */
+    private void bindPaymentFiles(CurrentUser actor, long document, List<Long> fileIds) {
+        for (long fileId : fileIds) {
+            mapper.lockFile(fileId);
+            var file = mapper.file(fileId);
+            if (file == null || file.uploadedBy() != actor.id()) throw denied();
+            if (file.category() != FileCategory.PAYMENT) throw new IllegalArgumentException("付款附件必须为付款记录");
+            if (!mapper.documentsForFile(fileId).isEmpty() || !mapper.paymentDocumentsForFile(fileId).isEmpty()) {
+                throw new IllegalArgumentException("附件已被其他记录使用");
+            }
+            mapper.addPaymentFile(document, fileId);
         }
     }
 

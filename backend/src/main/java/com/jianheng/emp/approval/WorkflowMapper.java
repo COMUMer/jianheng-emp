@@ -3,6 +3,7 @@ package com.jianheng.emp.approval;
 import static com.jianheng.emp.approval.WorkflowData.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.apache.ibatis.annotations.*;
@@ -139,11 +140,14 @@ public interface WorkflowMapper {
     void addPayment(long id, PaymentInput payment, long actor);
     @Insert("INSERT INTO expense_payment_file(document_id,file_id) VALUES(#{document},#{file})")
     void addPaymentFile(long document, long file);
+    @Delete("DELETE FROM expense_payment_file WHERE document_id=#{id}") void clearPaymentFiles(long id);
+    @Update("UPDATE expense_payment SET paid_on=#{paidOn} WHERE document_id=#{id}") void updatePaymentDate(long id, LocalDate paidOn);
+    @Select("SELECT paid_by FROM expense_payment WHERE document_id=#{id}") Long paymentPayer(long id);
     @Select("SELECT f.* FROM document_file f JOIN expense_payment_file pf ON pf.file_id=f.id WHERE pf.document_id=#{id} ORDER BY f.id")
     List<FileRecord> paymentFiles(long id);
     @Select("SELECT document_id FROM expense_payment_file WHERE file_id=#{id}")
     List<Long> paymentDocumentsForFile(long id);
-    @Select("SELECT p.paid_on,COALESCE(ea.name,a.username) AS payer,ea.avatar_key AS payer_avatar_key FROM expense_payment p JOIN account a ON a.id=p.paid_by LEFT JOIN employee ea ON ea.id=a.employee_id WHERE p.document_id=#{id}") Payment payment(long id);
+    @Select("SELECT p.paid_on,p.paid_by,COALESCE(ea.name,a.username) AS payer,ea.avatar_key AS payer_avatar_key FROM expense_payment p JOIN account a ON a.id=p.paid_by LEFT JOIN employee ea ON ea.id=a.employee_id WHERE p.document_id=#{id}") Payment payment(long id);
     @Select("SELECT e.name,e.bank_name,e.bank_card,e.cnaps_code FROM account a JOIN employee e ON e.id=a.employee_id WHERE a.id=#{id}")
     PayeeAccount payeeAccount(long accountId);
     @Insert("INSERT INTO notification(recipient_id,document_id,actor_id,message) VALUES(#{recipient},#{document},#{actor},#{message})")

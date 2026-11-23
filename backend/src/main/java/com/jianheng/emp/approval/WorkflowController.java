@@ -59,6 +59,16 @@ class WorkflowController {
         workflow.pay(accounts.current(user), id, input);
     }
 
+    @PutMapping("/documents/{id}/payment") void correctPayment(Authentication user, @PathVariable long id,
+        @Valid @RequestBody PaymentInput input) {
+        workflow.correctPayment(accounts.current(user), id, input);
+    }
+
+    @PostMapping("/documents/{id}/payment/fix-request") void requestPaymentFileFix(Authentication user, @PathVariable long id,
+        @Valid @RequestBody FixRequestInput input) {
+        workflow.requestPaymentFileFix(accounts.current(user), id, input.reason());
+    }
+
     @GetMapping("/inbox") List<Summary> inbox(Authentication user, @RequestParam(defaultValue="false") boolean all) {
         var actor = accounts.current(user);
         if (all) accounts.require(actor, Role.ADMIN);

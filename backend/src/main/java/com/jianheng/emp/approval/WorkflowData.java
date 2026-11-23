@@ -44,7 +44,8 @@ public final class WorkflowData {
     public record TemplateView(Template template, List<Node> nodes) {}
     public record TaskInput(@NotNull Action action, @Size(max=800) String comment, Long assigneeId) {}
     public record PaymentInput(@NotNull LocalDate paidOn, @NotEmpty @Size(max=30) List<@NotNull Long> fileIds) {}
-    public record Payment(LocalDate paidOn, String payer, String payerAvatarKey) {}
+    public record FixRequestInput(@NotBlank @Size(max=60) String reason) {}
+    public record Payment(LocalDate paidOn, Long paidBy, String payer, String payerAvatarKey) {}
     public record Category(long id, String name, boolean active, LocalDateTime createdAt, LocalDateTime updatedAt, String operator) {}
     public record Summary(long id, String documentNo, Kind kind, Status status, String title, String applicant, Long applicantEmployeeId, String applicantAvatarKey,
                           String departmentName, BigDecimal amount, LocalDateTime createdAt, LocalDateTime updatedAt, String operator, Long operatorEmployeeId, String operatorAvatarKey,
