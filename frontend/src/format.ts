@@ -21,6 +21,7 @@ export const operationLabel: Record<string, string> = {
     EMPLOYEE_CREATE: '入职建档', EMPLOYEE_REHIRE: '重新入职', EMPLOYEE_UPDATE: '更新档案', EMPLOYEE_DEPART: '登记离职',
     ACCOUNT_UPDATE: '账号变更', ACCOUNT_DISABLE: '账号停用', APPROVAL_PUBLISH: '发布审批规则',
     APPROVAL_TRANSFER: '转派审批', PAYMENT_RECORD: '登记付款', EXPENSE_EXPORT: '导出台账',
+    PAYMENT_CORRECTION: '更正付款登记', PAYMENT_FIX_REQUEST: '要求更正付款登记',
 };
 
 export function formatMoney(value?: number | null) {

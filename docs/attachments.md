@@ -20,6 +20,7 @@
 | 2 | 上传后点「移除」 | [`AttachmentUpload.remove`](../frontend/src/documents/AttachmentUpload.tsx) 只过滤本地数组，无删除接口 |
 | 3 | 已保存草稿里移除附件再保存 | [`WorkflowService.saveDraft`](../backend/src/main/java/com/jianheng/emp/approval/WorkflowService.java) 的 `clearFiles` |
 | 4 | 付款弹窗上传后取消 | [`DocumentDetail`](../frontend/src/documents/DocumentDetail.tsx) 的 `closeAction` |
+| 5 | 更正付款登记时被移除的文件 | [`WorkflowService.correctPayment`](../backend/src/main/java/com/jianheng/emp/approval/WorkflowService.java) |
 
 两个上传入口、两份独立 state，排查时别只看一处。
 

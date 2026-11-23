@@ -164,6 +164,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["correctPayment"];
+        post: operations["pay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/password": {
         parameters: {
             query?: never;
@@ -436,7 +452,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/documents/{id}/payment": {
+    "/api/documents/{id}/payment/fix-request": {
         parameters: {
             query?: never;
             header?: never;
@@ -445,7 +461,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["pay"];
+        post: operations["requestPaymentFileFix"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1026,6 +1042,8 @@ export interface components {
         Payment: {
             /** Format: date */
             paidOn?: string;
+            /** Format: int64 */
+            paidBy?: number;
             payer?: string;
             payerAvatarKey?: string;
         };
@@ -1124,6 +1142,11 @@ export interface components {
             /** Format: date-time */
             dueAt?: string;
         };
+        PaymentInput: {
+            /** Format: date */
+            paidOn: string;
+            fileIds: number[];
+        };
         ChangePassword: {
             code: string;
             newPassword: string;
@@ -1182,10 +1205,8 @@ export interface components {
             /** Format: int64 */
             assigneeId?: number;
         };
-        PaymentInput: {
-            /** Format: date */
-            paidOn: string;
-            fileIds: number[];
+        FixRequestInput: {
+            reason: string;
         };
         NodeInput: {
             label: string;
@@ -1253,8 +1274,8 @@ export interface components {
             positionName?: string;
         };
         CsrfToken: {
-            parameterName?: string;
             token?: string;
+            parameterName?: string;
             headerName?: string;
         };
         Csrf: {
@@ -2488,6 +2509,146 @@ export interface operations {
                 content: {
                     "*/*": components["schemas"]["Detail"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: unknown;
+                    } | {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    correctPayment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: unknown;
+                    } | {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Content Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    pay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaymentInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Bad Request */
             400: {
@@ -4041,7 +4202,7 @@ export interface operations {
             };
         };
     };
-    pay: {
+    requestPaymentFileFix: {
         parameters: {
             query?: never;
             header?: never;
@@ -4052,7 +4213,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PaymentInput"];
+                "application/json": components["schemas"]["FixRequestInput"];
             };
         };
         responses: {

@@ -1,5 +1,5 @@
 import { App } from 'antd';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { api, ApiError } from '../api';
@@ -76,6 +76,68 @@ test('claims the document before opening the payment dialog', async () => {
 
     expect(await screen.findByText('付款附件')).toBeTruthy();
     expect(vi.mocked(api).mock.calls.some(([path]) => path === '/documents/1/payment/claim')).toBe(true);
+});
+
+const paidDetail = {
+    ...detail,
+    summary: { ...detail.summary, status: 'PAID' },
+    payment: { paidOn: '2026-11-20', paidBy: 5, payer: '吕沁函' },
+    paymentFiles: [{ id: 11, originalName: '错误回单.png', category: 'PAYMENT' }],
+} as Model<'Detail'>;
+
+test('lets the original payer correct the payment date and attachments', async () => {
+    vi.mocked(api).mockImplementation(async path => (path === '/documents/1' ? paidDetail : []) as never);
+    const user = userEvent.setup();
+
+    render(<App><DocumentDetail id={1} user={payer} close={vi.fn()} edit={vi.fn()} refresh={vi.fn()} /></App>);
+    await user.click(await screen.findByRole('button', { name: '更正付款登记' }));
+    await waitFor(() => expect(document.querySelector('.ant-modal')).toBeTruthy());
+
+    const modal = document.querySelector('.ant-modal') as HTMLElement;
+    expect(within(modal).getByText('错误回单.png')).toBeTruthy();
+    await user.click(within(modal).getByRole('button', { name: /确\s*定/ }));
+
+    const call = vi.mocked(api).mock.calls.find(([path, options]) => path === '/documents/1/payment'
+        && options?.method === 'PUT');
+    expect(call?.[1]?.body).toEqual({ paidOn: '2026-11-20', fileIds: [11] });
+});
+
+test('only the original payer may correct the payment', async () => {
+    const otherPayer: Model<'CurrentUser'> = { id: 7, username: 'other', employeeId: 12, roles: ['PAYER'] };
+    vi.mocked(api).mockImplementation(async path => (path === '/documents/1' ? paidDetail : []) as never);
+
+    render(<App><DocumentDetail id={1} user={otherPayer} close={vi.fn()} edit={vi.fn()} refresh={vi.fn()} /></App>);
+
+    expect(await screen.findByText('错误回单.png')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '更正付款登记' })).toBeNull();
+});
+
+test('lets finance ask the payer to fix the payment registration', async () => {
+    const finance: Model<'CurrentUser'> = { id: 9, username: 'finance', employeeId: 12, roles: ['FINANCE'] };
+    vi.mocked(api).mockImplementation(async path => (path === '/documents/1' ? paidDetail : []) as never);
+    const user = userEvent.setup();
+
+    render(<App><DocumentDetail id={1} user={finance} close={vi.fn()} edit={vi.fn()} refresh={vi.fn()} /></App>);
+    await user.click(await screen.findByRole('button', { name: '要求更正' }));
+    await waitFor(() => expect(document.querySelector('.ant-modal')).toBeTruthy());
+
+    const modal = document.querySelector('.ant-modal') as HTMLElement;
+    await user.type(within(modal).getByRole('textbox'), '回单传错了，请重传');
+    await user.click(within(modal).getByRole('button', { name: /确\s*定/ }));
+
+    expect(vi.mocked(api).mock.calls.some(([path, options]) => path === '/documents/1/payment/fix-request'
+        && (options?.body as { reason?: string })?.reason === '回单传错了，请重传')).toBe(true);
+});
+
+test('hides the payment correction entries from other roles', async () => {
+    const employee: Model<'CurrentUser'> = { id: 6, username: 'zhangsan', employeeId: 14, roles: ['EMPLOYEE'] };
+    vi.mocked(api).mockImplementation(async path => (path === '/documents/1' ? paidDetail : []) as never);
+
+    render(<App><DocumentDetail id={1} user={employee} close={vi.fn()} edit={vi.fn()} refresh={vi.fn()} /></App>);
+
+    expect(await screen.findByText('错误回单.png')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '更正付款登记' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '要求更正' })).toBeNull();
 });
 
 test('refuses to open the payment dialog when another payer holds the claim', async () => {

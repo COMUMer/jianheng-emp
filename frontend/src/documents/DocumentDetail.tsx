@@ -12,11 +12,13 @@ import { AttachmentUpload } from './AttachmentUpload';
 import { ApprovalProcess } from './ApprovalProcess';
 import { useResource } from '../useResource';
 
+type DetailAction = Model<'TaskInput'>['action'] | 'PAY' | 'PAY_CORRECTION' | 'FIX_REQUEST';
+
 export function DocumentDetail({ id, user, close, edit, refresh }: { id: number; user: Model<'CurrentUser'>; close: () => void;
     edit: (detail: Model<'Detail'>) => void; refresh: () => void }) {
     const { message } = App.useApp();
     const detail = useResource<Model<'Detail'>>(`/documents/${id}`);
-    const [action, setAction] = useState<Model<'TaskInput'>['action'] | 'PAY'>();
+    const [action, setAction] = useState<DetailAction>();
     const [busy, setBusy] = useState(false);
     const [paymentFiles, setPaymentFiles] = useState<Model<'Attachment'>[]>([]);
     const [paymentFilesBusy, setPaymentFilesBusy] = useState(false);
@@ -32,8 +34,15 @@ export function DocumentDetail({ id, user, close, edit, refresh }: { id: number;
     const canTransfer = !!active && user.roles?.includes('ADMIN');
     const canPay = summary?.status === 'AWAITING_PAYMENT' && user.roles?.includes('PAYER');
     const canEdit = detail.data?.ownerId === user.id && (summary?.status === 'DRAFT' || summary?.status === 'RETURNED');
+    const payment = detail.data?.payment;
+    const paid = summary?.status === 'PAID' && !!payment;
+    const canCorrectPayment = paid && user.roles?.includes('PAYER') && payment?.paidBy === user.id;
+    const canRequestPaymentFix = paid && (user.roles?.includes('FINANCE') || user.roles?.includes('ADMIN'));
     const assignees = useResource<Model<'AccountOption'>[]>(action === 'TRANSFER' ? '/approval/assignees' : null);
-    const actionTitles = { APPROVE: '通过审批', RETURN: '驳回申请', TRANSFER: '转派审批', PAY: '登记付款' };
+    const actionTitles: Record<DetailAction, string> = {
+        APPROVE: '通过审批', RETURN: '驳回申请', TRANSFER: '转派审批', PAY: '登记付款',
+        PAY_CORRECTION: '更正付款登记', FIX_REQUEST: '要求更正付款登记',
+    };
 
     function closeAction() {
         if (claimRef.current) {
@@ -59,6 +68,13 @@ export function DocumentDetail({ id, user, close, edit, refresh }: { id: number;
         } finally {
             setClaiming(false);
         }
+    }
+
+    /** 更正付款登记：付款日期与附件都以当前登记为初值，提交时整体替换，付款人不变。 */
+    function openCorrection() {
+        setPaymentFiles(detail.data?.paymentFiles ?? []);
+        setPaymentFileError('');
+        setAction('PAY_CORRECTION');
     }
 
     useEffect(() => () => {
@@ -130,7 +146,8 @@ export function DocumentDetail({ id, user, close, edit, refresh }: { id: number;
                         <h4 className="process-heading">付款附件</h4>
                         {detail.data.paymentFiles.map(file => attachmentRow(file))}
                     </section>}
-                    {(canEdit || canApprove || canTransfer || canPay) && index === 0 && <div className="detail-round-actions">
+                    {(canEdit || canApprove || canTransfer || canPay || canCorrectPayment || canRequestPaymentFix)
+                        && index === 0 && <div className="detail-round-actions">
                         {canTransfer && <Button color="orange" variant="solid" disabled={busy}
                             onClick={() => setAction('TRANSFER')}>转派</Button>}
                         {canEdit && <Button type="primary" onClick={() => detail.data && edit(detail.data)}>编辑申请</Button>}
@@ -140,25 +157,36 @@ export function DocumentDetail({ id, user, close, edit, refresh }: { id: number;
                         </>}
                         {canPay && <Button type="primary" disabled={busy || claiming} loading={claiming}
                         onClick={() => void openPayment()}>登记付款</Button>}
+                        {canCorrectPayment && <Button danger disabled={busy}
+                            onClick={openCorrection}>更正付款登记</Button>}
+                        {canRequestPaymentFix && <Button danger disabled={busy}
+                            onClick={() => setAction('FIX_REQUEST')}>要求更正</Button>}
                     </div>}
                 </section>;
             })}
         </ResourceState>
     </Drawer>
-    {action && <Modal open centered title={actionTitles[action]} onCancel={closeAction} okText={actionTitles[action]}
-        width={action === 'PAY' ? 560 : undefined}
+    {action && <Modal open centered title={actionTitles[action]} onCancel={closeAction}
+        okText={action === 'PAY_CORRECTION' || action === 'FIX_REQUEST' ? '确定' : actionTitles[action]}
+        width={action === 'PAY' || action === 'PAY_CORRECTION' ? 560 : undefined}
         okButtonProps={{ form: 'document-action', htmlType: 'submit', loading: busy, disabled: paymentFilesBusy }}>
-        <Form id="document-action" layout="vertical" onFinish={async (values: Model<'TaskInput'> & Model<'PaymentInput'>) => {
-            if (action === 'PAY' && paymentFiles.length === 0) {
+        <Form id="document-action" layout="vertical" initialValues={{ paidOn: payment?.paidOn }}
+            onFinish={async (values: Model<'TaskInput'> & Model<'PaymentInput'> & { reason?: string }) => {
+            const replacing = action === 'PAY' || action === 'PAY_CORRECTION';
+            if (replacing && paymentFiles.length === 0) {
                 setPaymentFileError('请上传付款附件');
                 return;
             }
             setBusy(true);
             try {
-                if (action === 'PAY') await api(`/documents/${id}/payment`, { method: 'POST',
-                    body: { ...values, fileIds: paymentFiles.flatMap(file => file.id ?? []) } });
+                const fileIds = paymentFiles.flatMap(file => file.id ?? []);
+                if (action === 'PAY') await api(`/documents/${id}/payment`, { method: 'POST', body: { ...values, fileIds } });
+                else if (action === 'PAY_CORRECTION') await api(`/documents/${id}/payment`,
+                    { method: 'PUT', body: { paidOn: values.paidOn, fileIds } });
+                else if (action === 'FIX_REQUEST') await api(`/documents/${id}/payment/fix-request`,
+                    { method: 'POST', body: { reason: values.reason } });
                 else await api(`/documents/${id}/tasks/${active?.id}`, { method: 'POST', body: { ...values, action } });
-                message.success(actionTitles[action] + '成功');
+                message.success(action === 'FIX_REQUEST' ? '已通知付款人' : actionTitles[action] + '成功');
                 closeAction();
                 detail.reload();
                 refresh();
@@ -166,8 +194,8 @@ export function DocumentDetail({ id, user, close, edit, refresh }: { id: number;
             } catch (error) { message.error(showError(error)); }
             finally { setBusy(false); }
         }}>
-            {action === 'PAY' ? <>
-                {summary?.kind === 'EXPENSE' && <section className="payment-account" aria-label="申请人收款账户">
+            {action === 'PAY' || action === 'PAY_CORRECTION' ? <>
+                {action === 'PAY' && summary?.kind === 'EXPENSE' && <section className="payment-account" aria-label="申请人收款账户">
                     {hasBankInfo ? <dl className="payment-account-list">
                         <div className="payment-account-row"><dt>开户行</dt><dd>{payee?.bankName || '—'}</dd></div>
                         <div className="payment-account-row"><dt>银行账号</dt>
@@ -187,7 +215,10 @@ export function DocumentDetail({ id, user, close, edit, refresh }: { id: number;
                     <AttachmentUpload files={paymentFiles} onChange={next => { setPaymentFiles(next); setPaymentFileError(''); }}
                         category="PAYMENT" showHint={false} disabled={busy} onBusyChange={setPaymentFilesBusy} />
                 </Form.Item>
-            </> : <>{action === 'TRANSFER' && <Form.Item name="assigneeId" label="新审批人" rules={[{ required: true }]}><Select options={assignees.data?.filter(item => item.id !== active?.assigneeId)
+            </> : action === 'FIX_REQUEST' ? <Form.Item name="reason" label="原因" rules={[
+                { required: true, whitespace: true, message: '请填写原因' },
+            ]}><Input.TextArea rows={3} maxLength={60} showCount /></Form.Item>
+            : <>{action === 'TRANSFER' && <Form.Item name="assigneeId" label="新审批人" rules={[{ required: true }]}><Select options={assignees.data?.filter(item => item.id !== active?.assigneeId)
                 .map(item => ({ value: item.id, label: item.name ?? item.username }))} /></Form.Item>}
                 <Form.Item name="comment" label={action === 'APPROVE' ? '审批意见' : '原因'} rules={[
                     { required: true, whitespace: true, message: action === 'APPROVE' ? '请填写审批意见' : '请填写原因' },
